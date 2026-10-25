@@ -27,14 +27,33 @@ private:
     Micropolis sim;
 
     // ---- view state
-    int camX = 0, camY = 0;      // top-left visible tile
-    int zoom = 1;                // 1 or 2
-    int curX = 60, curY = 50;    // cursor tile
+    // The bottom (touch) screen is a flat 2D map you build on; the top screen
+    // shows the same spot in stereoscopic 3D plus the city's vital signs.
+    int camX = 0, camY = 0;      // top-left tile of the bottom map
+    bool zoomOut = false;        // bottom map at 8 px tiles instead of 16
+    int curX = 60, curY = 50;    // cursor tile (buttons and touch share it)
     int toolIdx = 9;             // index into kTools (road)
-    bool dragging = false;
+    int prevToolIdx = 9;         // for B: bulldozer toggle
+    int extraTool = 11;          // the strip's 8th slot (last tool picked from More)
+    bool toolPopup = false;      // the full 16-tool grid over the map
+    bool dragging = false;       // A held + d-pad paints
     uint64_t lastTickMs = 0;
     uint64_t lastRepeatMs = 0;
+    uint64_t lastEdgeScrollMs = 0;
     int frameCounter = 0;
+
+    // ---- touch gesture state on the bottom map
+    enum TouchState { T_NONE, T_PENDING, T_PAINT, T_PLACE, T_PAN, T_DONE } tstate = T_NONE;
+    int tStartX = 0, tStartY = 0;          // stylus position at touch-down
+    int tTileX = 0, tTileY = 0;            // last tile handled
+    int panCamX0 = 0, panCamY0 = 0;
+    uint64_t tStartMs = 0;
+    long dragFunds0 = 0;                   // funds at the start of a paint drag
+    long lastDragCost = 0; uint64_t lastDragAt = 0;
+    bool shoulderUsedForPan = false;       // L/R held while panning: don't cycle tools on release
+
+    // ---- alert location (from the engine's message callback)
+    int alertX = -1, alertY = -1; uint64_t alertAt = 0;
 
     enum Mode { MODE_PLAY, MODE_BUDGET, MODE_MENU, MODE_QUERY, MODE_DISASTERS, MODE_HELP, MODE_LOADCITY } mode = MODE_PLAY;
     int helpPage = 0;
@@ -42,6 +61,7 @@ private:
     static const int kMaxCities = 64;
     char cityNames[kMaxCities][40];
     int nCities = 0, citySel = 0;
+    bool hasAutosave = false;              // entry 0 is <saveDir>/autosave.cty
     void scanCities();
     int menuSel = 0;
     int budgetSel = 0;
@@ -49,7 +69,6 @@ private:
     enum Overlay { OV_NONE, OV_POWER, OV_POLLUTION, OV_CRIME, OV_LANDVALUE, OV_TRAFFIC,
                    OV_POPDENSITY, OV_FIRE, OV_POLICE, OV_GROWTH, OV_COUNT };
     int overlay = OV_NONE;
-    bool overlayOnCity = true;
     // sample the current overlay at a world tile: 0..255, or -1 for "none"
     int overlayValue(int tx, int ty) const;
     int overlayMax() const;
@@ -73,29 +92,44 @@ private:
     // ---- update
     void tickSim(uint64_t now);
     void handlePlayInput(const Input &in, uint64_t now);
+    void handleMapTouch(const Input &in, uint64_t now);
+    void handleUiTap(int x, int y);
     void handleMenuInput(const Input &in);
     void handleBudgetInput(const Input &in);
     void handleDisasterInput(const Input &in);
     void handleHelpInput(const Input &in);
     void handleLoadCityInput(const Input &in);
-    void applyTool();
+    bool applyToolAt(int tx, int ty);      // false when the city ran out of money
+    void paintLineTo(int tx, int ty);
+    void selectTool(int idx);
+    void cycleStripTool(int dir);
+    bool siteOk(int tx, int ty) const;     // footprint is buildable and affordable
     void centerOn(int tx, int ty);
     void clampCamera();
-    int visibleCols() const { return TOP_W / (16 * zoom) + 1; }
-    int visibleRows() const { return TOP_H / (16 * zoom) + 1; }
+    void keepCursorVisible();
+    int bts() const { return zoomOut ? 8 : 16; }
+    int mapCols() const { return BOT_W / bts(); }
+    int mapRows() const { return (MAP_H + bts() - 1) / bts(); }
+    void topOrigin(int &ox, int &oy) const;
+    int topTs() const;
+    void updateTopCamera();
+    float topCx = -1.f, topCy = -1.f;   // top close-up centre, world px at 16/tile
 
     // ---- render
+    struct View { int ox, oy, ts, sy0, w, h; };   // world-pixel origin at scale ts
     void render(float slider);
     void drawCity(Screen &s, int eye, float slider);
-    void drawCityPass(Screen &s, int pass, int dx);
-    void drawSprites(Screen &s, int dx);
-    void drawOverlayTint(Screen &s, int dx);
-    void drawCursor(Screen &s, int dx);
+    void drawTiles(Screen &s, const View &v, int pass, int dx);   // pass -1 = all
+    void drawSprites(Screen &s, const View &v, int dx);
+    void drawOverlayTint(Screen &s, const View &v, int dx);
+    void drawFootprint(Screen &s, const View &v, int dx, bool thick);
     void drawTopHud(Screen &s);
     void drawBottom();
-    void drawMinimap(Screen &s, int x0, int y0);
-    void drawToolbar(Screen &s, int x0, int y0);
-    void drawMessages(Screen &s, int x0, int y0, int w, int h);
+    void drawBottomBar(Screen &s);
+    void drawToolStrip(Screen &s);
+    void drawToolPopup(Screen &s);
+    void drawIcon(Screen &s, int x, int y, int toolIndex, int w, int srcY0, int h);
+    void drawMinimap(Screen &s, int x0, int y0, int step);
     void drawBudget(Screen &s);
     void drawMenu(Screen &s);
     void drawQuery(Screen &s);
@@ -105,6 +139,9 @@ private:
 
     int depthClass(int tileValue) const;
     int toolCost(EditingTool t) const;
+
+    // bottom-screen layout
+    static const int BAR_H = 18, MAP_Y0 = 18, MAP_H = 188, STRIP_Y = 206, STRIP_H = 34;
 
     uint8_t *topBuf, *topRBuf, *botBuf;
 };

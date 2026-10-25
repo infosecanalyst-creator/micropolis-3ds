@@ -4,52 +4,68 @@ A native 3DS frontend over the open-source Micropolis engine (the original
 SimCity simulation, GPLv3 — 21k lines of dependency-free C++, vendored in
 `engine/` unchanged except one header guard).
 
-**Status: frontend fully working on desktop (headless test harness), untested
-on hardware.** Unlike the DCSS and Ultima scaffolds, this one has actually
-*run*: the headless build loads the bundled scenarios, simulates, renders
-both screens and the stereo pair, and responds to scripted input. Only the
-libctru layer (`src/3ds/platform_3ds.cpp`, ~120 lines of framebuffer and HID
-glue) is unverified.
+**Status: runs on a New 3DS XL.** Every frontend change is also checked in a
+headless desktop build that loads the bundled scenarios, simulates, renders
+both screens and the stereo pair to PPM, and replays scripted button and
+stylus input (`TOUCH`, `DRAG`, `PRESS` tokens).
 
 ## Layout
 
-**Top screen** — the city at 16 px/tile (25×15 tiles), or 2× zoom (Y).
-Rendered in seven depth layers for the 3D slider: water sinks behind the
-screen plane, ground/roads/rail sit on it, and buildings rise with **zone
-density** — trees and houses one step, low-density zones two, mid three,
-heavy industry/power plants/stadium four, top-density commercial towers
-five — with trains/planes/helicopters/the monster flying in front. Downtown
-visibly towers over the suburbs. Each layer is drawn with a per-eye horizontal shift; the ground layer
-is drawn under elevated cells so parallax never exposes holes. A blinking
-cursor shows the tool footprint; the newest message appears as a strip.
+The DS-strategy layout (SimCity DS, Civ Rev, Anno DS): **you build on the
+touch screen; the top screen is for looking**.
 
-**Bottom screen** — funds / date / population / speed strip; a 1 px-per-tile
-minimap with the viewport rectangle (tap to jump) that doubles as the
-**overlay map** — ZL/ZR (or tap the label) cycle City / Power / Pollution /
-Crime / Land value / Traffic / Density / Fire cover / Police cover / Growth,
-auto-scaled to the map's current range, and the same overlay is tinted over
-the city on the top screen; the 16 tool icons in a
-4×4 grid (tap to select); speed buttons and Budget; R/C/I demand bars; the
-last four messages; and a control legend.
+**Bottom (touch) screen** — a flat 2D map of the city at 16 px/tile (20×12
+tiles), or 8 px/tile zoomed out (Y). Tap to use the tool; **drag** to paint
+roads, rail, power lines, parks or the bulldozer in one stroke (4-connected,
+so fast strokes stay joined); drag a zone or building and its footprint box
+follows the stylus — yellow when it can be built, red when blocked or
+unaffordable — and lifting the stylus builds it. Press and hold still to
+query a tile. L or R + drag scrolls; dragging near an edge auto-scrolls.
+
+- **Top bar:** funds (tap: budget) · date · speed (tap to cycle) · overlay
+  (tap to cycle) · **!** jump to the latest alert · ☰ menu.
+- **Tool strip:** Bulldozer, Road, Rail, Power line, Residential,
+  Commercial, Industrial, plus an eighth slot holding your last pick from the
+  full 4×4 grid of all 16 tools with prices (tap the slot again to open it).
+
+**Top screen** — a 2× stereoscopic close-up (32 px/tile) that glides after
+the cursor, so it always shows what you are building. Rendered in seven
+depth layers: ground, roads and water on the screen plane, buildings rising
+with **zone density** (downtown towers over the suburbs), vehicles nearest;
+the cursor sits on the surface it points at. A HUD over it shows funds,
+date, population, speed and R/C/I demand; a whole-city minimap framing the
+touch map's area (and showing the active overlay); the newest city
+message; and the selected tool with its price — or, while dragging, what the
+stroke has cost so far.
+
+Overlays (ZL/ZR or the top bar): City / Power / Pollution / Crime / Land
+value / Traffic / Density / Fire cover / Police cover / Growth, auto-scaled,
+tinted over both maps and the minimap.
+
+Every menu, the budget (−/+ buttons), load-city list and the in-game manual
+(Start > How to play; tap a chapter on the contents page) work by touch as
+well as buttons.
 
 ## Controls
 
 | Input | Action |
 |---|---|
-| D-pad | move the cursor (camera follows) |
-| Circle pad | scroll the camera |
-| A | apply tool (hold and move to drag roads/rail/wire) |
-| B | bulldozer |
-| L / R | previous / next tool |
-| Y | toggle 2× zoom |
+| Stylus | tap = use tool · drag = paint line / place zone · hold = query |
+| L or R + drag | scroll the map |
+| D-pad | move the cursor (map follows) |
+| Circle pad | scroll the map |
+| A | apply tool (hold A + D-pad to paint) |
+| B | bulldozer; B again returns to the previous tool |
+| L / R | previous / next tool in the strip |
+| Y | zoom the touch map out / in (top close-up follows) |
 | X | budget (tax rate, road/police/fire funding) |
-| Start | menu: new city, the 8 scenarios, disasters, save |
+| Start | menu: new city, the 8 scenarios, load, disasters, save, manual |
 | Select | cycle speed (pause/slow/medium/fast) |
 | ZL / ZR | previous / next overlay map |
-| Touch | minimap jump, overlay label, tool icons, speed buttons |
 | 3D slider | stereoscopic depth strength |
 
 Saves go to `sdmc:/3ds/micropolis/autosave.cty` and are resumed at launch.
+Load city lists the autosave first, then every `.cty` in `sdmc:/3ds/micropolis/cities/`.
 
 ## Build
 
@@ -100,7 +116,7 @@ Homebrew Launcher. No external data needed — everything is in romfs.
 
 Water, roads, rail and bare land sit on the screen plane; buildings rise
 with density (low → tower, 4 steps), vehicles and the cursor on top. Parallax
-is `kParallaxPx` (0.9 px per step at full slider, ×1.5 when zoomed) — up to
+is `kParallaxPx` (0.9 px per step at full slider, ×1.5 in the 2× close-up) — up to
 ~4.5 px between a road and a tower. Behind every elevated tile the ground
 pass draws the nearest ground-level neighbour so the eye shift never exposes
 black. If it still feels strong, lower `kParallaxPx` or the slider.

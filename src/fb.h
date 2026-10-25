@@ -69,6 +69,40 @@ inline void tile2x(Screen &s, int sx, int sy, int t) {
     }
 }
 
+// Same tile at half size (zoomed-out map): each pixel averages a 2x2 block.
+inline void tileHalf(Screen &s, int sx, int sy, int t, bool dim = false) {
+    if (t < 0 || t >= TILE_COUNT) t = 0;
+    const unsigned char *src = mp_tiles + t * 256;
+    const int sh = dim ? 3 : 2;
+    for (int y = 0; y < 8; ++y) {
+        const int yy = sy + y;
+        if (yy < 0 || yy >= s.h) continue;
+        const unsigned char *r0 = src + y * 32, *r1 = r0 + 16;
+        for (int x = 0; x < 8; ++x) {
+            const int xx = sx + x;
+            if (xx < 0 || xx >= s.w) continue;
+            const unsigned char *a = mp_palette[r0[2 * x]], *b = mp_palette[r0[2 * x + 1]],
+                                *c = mp_palette[r1[2 * x]], *d = mp_palette[r1[2 * x + 1]];
+            uint8_t *p = s.px(xx, yy);
+            p[0] = (uint8_t)((a[0] + b[0] + c[0] + d[0]) >> sh);
+            p[1] = (uint8_t)((a[1] + b[1] + c[1] + d[1]) >> sh);
+            p[2] = (uint8_t)((a[2] + b[2] + c[2] + d[2]) >> sh);
+        }
+    }
+}
+
+// Darken a rectangle in place (HUD panels over the city stay see-through).
+inline void darken(Screen &s, int x0, int y0, int w, int h) {
+    if (x0 < 0) { w += x0; x0 = 0; }
+    if (y0 < 0) { h += y0; y0 = 0; }
+    if (x0 + w > s.w) w = s.w - x0;
+    if (y0 + h > s.h) h = s.h - y0;
+    for (int y = y0; y < y0 + h; ++y) {
+        uint8_t *p = s.px(x0, y);
+        for (int x = 0; x < w * 3; ++x) p[x] = (uint8_t)(p[x] / 3);
+    }
+}
+
 inline void indexedImage(Screen &s, int sx, int sy, const unsigned char *src, int w, int h, int scale = 1) {
     for (int y = 0; y < h * scale; ++y) {
         const int yy = sy + y;
@@ -90,6 +124,25 @@ inline void sprite(Screen &s, int sx, int sy, int type, int frame, int scale = 1
     const SpriteFrame &f = mp_sprite_frames[type][frame - 1];
     if (!f.px) return;
     indexedImage(s, sx, sy, f.px, f.w, f.h, scale);
+}
+
+inline void spriteHalf(Screen &s, int sx, int sy, int type, int frame) {
+    if (type < 1 || type > 8 || frame < 1 || frame > mp_sprite_nframes[type]) return;
+    const SpriteFrame &f = mp_sprite_frames[type][frame - 1];
+    if (!f.px) return;
+    for (int y = 0; y < f.h / 2; ++y) {
+        const int yy = sy + y;
+        if (yy < 0 || yy >= s.h) continue;
+        for (int x = 0; x < f.w / 2; ++x) {
+            const int xx = sx + x;
+            if (xx < 0 || xx >= s.w) continue;
+            const unsigned char i = f.px[(2 * y) * f.w + 2 * x];
+            if (i == PAL_TRANSPARENT) continue;
+            const unsigned char *c = mp_palette[i];
+            uint8_t *p = s.px(xx, yy);
+            p[0] = c[0]; p[1] = c[1]; p[2] = c[2];
+        }
+    }
 }
 
 // ---- text: 6x12 regular and 7x13 bold bitmap fonts (hinted, 1-bit) ----

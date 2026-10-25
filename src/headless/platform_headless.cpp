@@ -50,7 +50,8 @@ void present(const Screen &top, const Screen *topRight, const Screen &bottom) {
 }
 }
 
-// script tokens: A B X Y L R UP DOWN LEFT RIGHT START SELECT, TOUCH:x:y, WAIT:n (frames)
+// script tokens: A B X Y L R UP DOWN LEFT RIGHT START SELECT, TOUCH:x:y, WAIT:n (frames),
+//   DRAG:x1:y1:x2:y2:n (stylus drag over n frames), PRESS:x:y:n (hold still n frames)
 static uint32_t tokenButton(const char *t) {
     static const struct { const char *n; uint32_t b; } m[] = {
         {"A", BTN_A}, {"B", BTN_B}, {"X", BTN_X}, {"Y", BTN_Y}, {"L", BTN_L}, {"R", BTN_R},
@@ -84,13 +85,35 @@ int main(int argc, char **argv) {
     char *scr = strdup(script);
     char *tok = strtok(scr, ",");
     int waitFrames = 0;
+    int gestFrames = 0, gestTotal = 1, gx1 = 0, gy1 = 0, gx2 = 0, gy2 = 0;
+    bool gestRelease = false;
     for (g_frame = 0; g_frame < frames; ++g_frame) {
         Input in;
         in.slider = slider;
-        if (waitFrames > 0) {
+        if (gestFrames > 0) {
+            // DRAG / PRESS in progress: stylus held, interpolated, then lifted
+            const int total = gestTotal, i = gestTotal - gestFrames + 1;
+            --gestFrames;
+            if (gestFrames > 0 || i <= total) {
+                in.touch = true;
+                in.touchX = gx1 + (gx2 - gx1) * i / total;
+                in.touchY = gy1 + (gy2 - gy1) * i / total;
+            }
+            if (gestFrames == 0) waitFrames = 0;
+        } else if (gestRelease) {
+            gestRelease = false;          // one frame with the stylus up
+        } else if (waitFrames > 0) {
             --waitFrames;
         } else if (tok) {
-            if (!strncmp(tok, "TOUCH:", 6)) {
+            if (!strncmp(tok, "DRAG:", 5) || !strncmp(tok, "PRESS:", 6)) {
+                int n = 10;
+                if (tok[0] == 'D') sscanf(tok + 5, "%d:%d:%d:%d:%d", &gx1, &gy1, &gx2, &gy2, &n);
+                else { sscanf(tok + 6, "%d:%d:%d", &gx1, &gy1, &n); gx2 = gx1; gy2 = gy1; }
+                gestTotal = gestFrames = n > 0 ? n : 1;
+                gestRelease = true;
+                in.touch = in.touchDown = true;
+                in.touchX = gx1; in.touchY = gy1;
+            } else if (!strncmp(tok, "TOUCH:", 6)) {
                 in.touch = in.touchDown = true;
                 sscanf(tok + 6, "%d:%d", &in.touchX, &in.touchY);
             } else if (!strncmp(tok, "WAIT:", 5)) {
