@@ -8,6 +8,10 @@
 #include <dirent.h>
 #include <strings.h>
 #include "fb.h"
+#include "manual3ds.h"
+#include "manual_text.h"
+
+static manual3ds::Manual g_manual;   // Start > How to play
 #include "../assets/icons_data.h"
 
 // ---------------------------------------------------------------------------
@@ -108,6 +112,7 @@ App::App() {
 
     // The constructor already ran init(); initGame() does the rest and the
     // engine's own simInit() runs from generateSomeCity()/loadCity().
+    g_manual.load(kManualText, "sdmc:/3ds/micropolis/manual.txt", "Micropolis for 3DS: manual");
     sim.resourceDir = platform::resDir();
     sim.callbackHook = callbackThunk;
     sim.callbackData = this;
@@ -533,7 +538,7 @@ void App::handleMenuInput(const Input &in) {
         else if (menuSel >= 1 && menuSel <= 8) { loadScenario(menuSel); mode = MODE_PLAY; }
         else if (menuSel == 9) { scanCities(); citySel = 0; mode = MODE_LOADCITY; }
         else if (menuSel == 10) { mode = MODE_DISASTERS; menuSel = 0; }
-        else if (menuSel == 12) { helpPage = 0; mode = MODE_HELP; }
+        else if (menuSel == 12) { g_manual.open(); mode = MODE_HELP; }
         else if (menuSel == 11) {
             char path[256];
             snprintf(path, sizeof(path), "%s/autosave.cty", platform::saveDir());
@@ -1136,46 +1141,27 @@ void App::drawDisasters(Screen &s) {
 }
 
 // ---- Manual (docs/manual.txt -> assets/manual.h) ---------------------------
-#include "../assets/manual.h"
-static const int kHelpPageCount = MANUAL_PAGES;
 
 void App::handleHelpInput(const Input &in) {
-    if (in.down & (BTN_B | BTN_START)) { mode = MODE_PLAY; tstate = T_DONE; return; }
-    if (in.touchDown && in.touchY >= BOT_H - 18 && in.touchX >= BOT_W - 60) { mode = MODE_PLAY; tstate = T_DONE; return; }
-    if (in.down & (BTN_RIGHT | BTN_A)) helpPage = (helpPage + 1) % kHelpPageCount;
-    if (in.down & BTN_LEFT) helpPage = (helpPage + kHelpPageCount - 1) % kHelpPageCount;
-    if (in.down & (BTN_R | BTN_L)) {
-        // jump to the next / previous chapter start
-        int ch = 0;
-        for (int i = 0; i < MANUAL_CHAPTERS; ++i) if (kManualChapterStart[i] <= helpPage) ch = i;
-        if (in.down & BTN_R) ch = (ch + 1) % MANUAL_CHAPTERS;
-        else ch = (kManualChapterStart[ch] == helpPage) ? (ch + MANUAL_CHAPTERS - 1) % MANUAL_CHAPTERS : ch;
-        helpPage = kManualChapterStart[ch];
-    }
-    if (in.touchDown && helpPage == 0 && in.touchY >= 26 + 14 && in.touchY < BOT_H - 20) {
-        const int ch = (in.touchY - 26) / 14;                       // contents: tap a chapter
-        if (ch >= 1 && ch < MANUAL_CHAPTERS) { helpPage = kManualChapterStart[ch]; return; }
-    }
-    if (in.touchDown) {
-        if (in.touchY < 24 && helpPage != 0) helpPage = 0;          // tap the title: contents
-        else helpPage = (in.touchX < BOT_W / 2) ? (helpPage + kHelpPageCount - 1) % kHelpPageCount
-                                                : (helpPage + 1) % kHelpPageCount;
-    }
+    manual3ds::Input mi;
+    static const struct { uint32_t b; uint32_t k; bool rep; } map[] = {
+        { BTN_UP, manual3ds::K_UP, true }, { BTN_DOWN, manual3ds::K_DOWN, true },
+        { BTN_LEFT, manual3ds::K_LEFT, true }, { BTN_RIGHT, manual3ds::K_RIGHT, true },
+        { BTN_L, manual3ds::K_L, false }, { BTN_R, manual3ds::K_R, false },
+        { BTN_A, manual3ds::K_A, false }, { BTN_B, manual3ds::K_B, false },
+        { BTN_START, manual3ds::K_START, false },
+    };
+    for (auto &m : map)
+        if ((m.rep ? in.repeat : in.down) & m.b) mi.down |= m.k;
+    mi.touch_down = in.touchDown;
+    mi.tx = in.touchX; mi.ty = in.touchY;
+    mi.cpad_y = in.cpadY;
+    if (!g_manual.update(mi)) mode = MODE_PLAY;
 }
 
 void App::drawHelp(Screen &s) {
-    fb::fillRect(s, 0, 0, BOT_W, BOT_H, 18, 22, 34);
-    fb::rectOutline(s, 0, 0, BOT_W, BOT_H, 120, 130, 170);
-    char hdr[64];
-    snprintf(hdr, sizeof(hdr), "%d/%d", helpPage + 1, kHelpPageCount);
-    fb::textB(s, 8, 6, kManual[helpPage][0], 255, 255, 180);
-    fb::text(s, BOT_W - 8 - fb::textWidth(hdr), 7, hdr, 140, 140, 160);
-    for (int i = 1; i < MANUAL_LINES; ++i)
-        if (kManual[helpPage][i] && kManual[helpPage][i][0])
-            fb::text(s, 8, 26 + (i - 1) * 14, kManual[helpPage][i], 220, 220, 220);
-    fb::text(s, 8, BOT_H - 14, "\u25c4\u25ba/tap page  L/R chapter  title: index", 130, 130, 150);
-    fb::fillRect(s, BOT_W - 58, BOT_H - 18, 54, 16, 60, 60, 100);
-    fb::textB(s, BOT_W - 50, BOT_H - 17, "Close", 255, 255, 200);
+    manual3ds::Canvas c = { s.w, s.h, s.rgb };
+    g_manual.draw_bottom(c);
 }
 
 // ---- Load city ------------------------------------------------------------
@@ -1255,6 +1241,13 @@ void App::drawLoadCity(Screen &s) {
 }
 
 void App::render(float slider) {
+    if (mode == MODE_HELP) {
+        manual3ds::Canvas c = { top.w, top.h, top.rgb };
+        g_manual.draw_top(c);
+        drawBottom();
+        platform::present(top, nullptr, bottom);
+        return;
+    }
     overlayMaxCached = (overlay == OV_NONE) ? 255 : overlayMax();
     drawCity(top, slider > 0.f ? -1 : 0, slider);
     if (slider > 0.f) drawCity(topR, 1, slider);
