@@ -47,6 +47,7 @@ void poll(Input &in) {
         { KEY_L, BTN_L }, { KEY_R, BTN_R }, { KEY_ZL, BTN_ZL }, { KEY_ZR, BTN_ZR },
         { KEY_DUP, BTN_UP }, { KEY_DDOWN, BTN_DOWN }, { KEY_DLEFT, BTN_LEFT }, { KEY_DRIGHT, BTN_RIGHT },
         { KEY_START, BTN_START }, { KEY_SELECT, BTN_SELECT },
+        { KEY_CSTICK_UP, BTN_CUP }, { KEY_CSTICK_DOWN, BTN_CDOWN },
     };
     in.down = in.held = in.repeat = 0;
     for (auto &m : map) {

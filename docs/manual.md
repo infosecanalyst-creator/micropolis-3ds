@@ -1,7 +1,13 @@
 # Welcome
 Micropolis is the original SimCity, released as open source. You are the mayor: zone land, lay roads and power, set taxes, and keep the people happy while the city grows on its own.
 
-Press Start and choose How to play to open this manual. B or Start closes it, and the city waits while you read.
+Press Start and choose How to play to open this manual. The city waits while you read.
+
+## Using this manual
+- Circle Pad or C-Stick up/down: scroll the text (hold to keep scrolling).
+- D-Pad: move between the sections on the touch screen. L / R: previous / next section.
+- Tap a section on the touch screen to jump to it.
+- B, Start or Close: back to the game.
 
 ## The two screens
 The touch screen is a flat map you build on with the stylus. The top screen is a 3D close-up that follows your cursor, with the city's money, date, population, demand bars, a minimap and the latest message.

@@ -15,6 +15,7 @@ enum Button {
     BTN_UP = 1 << 6, BTN_DOWN = 1 << 7, BTN_LEFT = 1 << 8, BTN_RIGHT = 1 << 9,
     BTN_START = 1 << 10, BTN_SELECT = 1 << 11,
     BTN_ZL = 1 << 12, BTN_ZR = 1 << 13,
+    BTN_CUP = 1 << 14, BTN_CDOWN = 1 << 15,   // New 3DS C-Stick up/down
 };
 
 struct Input {

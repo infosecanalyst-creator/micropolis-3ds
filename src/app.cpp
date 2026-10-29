@@ -1146,6 +1146,7 @@ void App::handleHelpInput(const Input &in) {
     manual3ds::Input mi;
     static const struct { uint32_t b; uint32_t k; bool rep; } map[] = {
         { BTN_UP, manual3ds::K_UP, true }, { BTN_DOWN, manual3ds::K_DOWN, true },
+        { BTN_CUP, manual3ds::K_SCROLL_UP, true }, { BTN_CDOWN, manual3ds::K_SCROLL_DOWN, true },
         { BTN_LEFT, manual3ds::K_LEFT, true }, { BTN_RIGHT, manual3ds::K_RIGHT, true },
         { BTN_L, manual3ds::K_L, false }, { BTN_R, manual3ds::K_R, false },
         { BTN_A, manual3ds::K_A, false }, { BTN_B, manual3ds::K_B, false },
