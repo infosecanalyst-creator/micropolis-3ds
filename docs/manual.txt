@@ -246,7 +246,7 @@ SAVE: Start > Save city writes
   automatically the next time you start.
 LOAD: Start > Load city lists every .cty in
   sdmc:/3ds/micropolis/cities/ - the original
-  SimCity (1989) city format, so classic files
+  classic 1989 city format, so classic files
   from the internet work unchanged.
 3D: the slider sets the depth. Water, roads and
   land sit on the screen plane; buildings rise
@@ -254,4 +254,4 @@ LOAD: Start > Load city lists every .cty in
   the cursor sits on whatever it points at.
   The top screen shows it; the touch map is 2D.
   Load also lists autosave.cty first.
-Micropolis is the open-source SimCity (GPL).
+Micropolis is free software (GPLv3).

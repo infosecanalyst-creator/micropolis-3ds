@@ -1223,7 +1223,7 @@ void App::drawLoadCity(Screen &s) {
     if (nCities == 0) {
         fb::text(s, 8, 30, "No .cty files found in", 220, 220, 220);
         fb::text(s, 8, 44, "sdmc:/3ds/micropolis/cities/", 200, 220, 255);
-        fb::text(s, 8, 66, "Copy SimCity / Micropolis city files there.", 180, 180, 190);
+        fb::text(s, 8, 66, "Copy Micropolis .cty city files there.", 180, 180, 190);
         fb::text(s, 8, 80, "(Menu > Save city writes autosave.cty.)", 160, 160, 170);
     } else {
         const int perPage = 13, first = (citySel / perPage) * perPage;

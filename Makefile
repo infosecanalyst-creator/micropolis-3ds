@@ -19,7 +19,7 @@ DATA        :=
 INCLUDES    := engine src assets
 ROMFS       := romfs
 APP_TITLE   := Micropolis
-APP_DESCRIPTION := SimCity classic, dual screen + stereoscopic
+APP_DESCRIPTION := Open-source city builder, dual screen + 3D
 APP_AUTHOR  := Micropolis / 3DS port
 ICON        := 3ds/icon.png
 

@@ -1,8 +1,8 @@
-# Micropolis 3DS — SimCity classic on the New 3DS, dual screen + stereoscopic
+# Micropolis 3DS — the open-source Micropolis city builder on the New 3DS, dual screen + stereoscopic
 
-A native 3DS frontend over the open-source Micropolis engine (the original
-SimCity simulation, GPLv3 — 21k lines of dependency-free C++, vendored in
-`engine/` unchanged except one header guard).
+A native 3DS frontend over the open-source Micropolis engine (GPLv3 —
+21k lines of dependency-free C++, vendored in `engine/` unchanged except one
+header guard, marked as a modification).
 
 **Status: runs on a New 3DS XL.** Every frontend change is also checked in a
 headless desktop build that loads the bundled scenarios, simulates, renders
@@ -11,7 +11,7 @@ stylus input (`TOUCH`, `DRAG`, `PRESS` tokens).
 
 ## Layout
 
-The DS-strategy layout (SimCity DS, Civ Rev, Anno DS): **you build on the
+The usual DS strategy-game layout: **you build on the
 touch screen; the top screen is for looking**.
 
 **Bottom (touch) screen** — a flat 2D map of the city at 16 px/tile (20×12
@@ -106,9 +106,9 @@ Homebrew Launcher. No external data needed — everything is in romfs.
 - **Start → How to play**: five pages (controls, starting a city, zones and
   demand, services and budget, overlays/disasters/files) on the bottom screen.
 - **Start → Load city…** lists `.cty` files from `sdmc:/3ds/micropolis/cities/`.
-  That is the "mod" surface Micropolis has: the format is the original
-  SimCity (1989) city file, so classic cities and anything saved by
-  Micropolis/SimCity Classic load as-is. There is no scripting or tileset
+  That is the "mod" surface Micropolis has: the format is the classic
+  1989 city file, so classic cities and anything saved by Micropolis
+  load as-is. There is no scripting or tileset
   mod system in the engine.
 - The selected tool shows a one-line description under its name.
 
@@ -120,3 +120,23 @@ is `kParallaxPx` (0.9 px per step at full slider, ×1.5 in the 2× close-up) —
 ~4.5 px between a road and a tower. Behind every elevated tile the ground
 pass draws the nearest ground-level neighbour so the eye shift never exposes
 black. If it still feels strong, lower `kParallaxPx` or the slider.
+
+## Licence
+
+GPL-3.0-or-later; the full text is in [`COPYING`](COPYING).
+
+- `engine/` is the Micropolis engine, Copyright (C) 1989–2007 Electronic Arts Inc.,
+  released under the GPLv3 **with additional terms under GPL section 7** (see the header
+  of `engine/micropolis.h`, which must travel with every copy). Among them: no right to
+  the *SimCity* trademark or any other Electronic Arts trademark, no claim of affiliation
+  with Electronic Arts, and modified versions must be marked as modified. The one changed
+  engine file, `engine/micropolis.h`, says so at the top.
+- `res/` (scenarios, terrain data, sample cities) and the graphics in `assets/` (generated from
+  the Micropolis PNGs) come from the Micropolis release under the same licence.
+- The 3DS frontend (`src/`, `tools/`, the build files) is GPL-3.0-or-later as well.
+
+## Disclaimer
+
+This is an unofficial, modified version of Micropolis. It is not affiliated with or
+endorsed by Electronic Arts, Nintendo or the Micropolis project, and it is not the
+original program.

@@ -1,7 +1,7 @@
 #pragma once
 // Generated from docs/manual.md
 static const char *const kManualText = R"MANUAL(# Welcome
-Micropolis is the original SimCity, released as open source. You are the mayor: zone land, lay roads and power, set taxes, and keep the people happy while the city grows on its own.
+Micropolis is a classic city-building simulation, released as open source. You are the mayor: zone land, lay roads and power, set taxes, and keep the people happy while the city grows on its own.
 
 Press Start and choose How to play to open this manual. The city waits while you read.
 
@@ -153,7 +153,7 @@ Each starts a real city with a crisis and a goal, judged after a time limit.
 
 # Files, saving and 3D
 - Menu > Save city writes sdmc:/3ds/micropolis/autosave.cty, which loads automatically next time.
-- Menu > Load city lists the autosave first, then every .cty in sdmc:/3ds/micropolis/cities/ (the original SimCity format, so classic city files work).
+- Menu > Load city lists the autosave first, then every .cty in sdmc:/3ds/micropolis/cities/ (the classic 1989 city format, so classic city files work).
 - The 3D slider sets the depth of the top screen: buildings rise with their density, vehicles are nearest, and the cursor sits on whatever it points at.
 - A manual.txt in sdmc:/3ds/micropolis/ replaces this manual's text.
 )MANUAL";

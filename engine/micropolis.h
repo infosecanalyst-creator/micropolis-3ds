@@ -60,6 +60,10 @@
  * NOT APPLY TO YOU.
  */
 
+/* MODIFIED VERSION (micropolis-3ds, 2026-10): this is not the original program.
+ * Changed for the Nintendo 3DS build: <sys/file.h> is skipped when __3DS__ is
+ * defined (newlib has no flock). Nothing else in engine/ is changed. */
+
 /** @file micropolis.h
  * Micropolis include file
  */
