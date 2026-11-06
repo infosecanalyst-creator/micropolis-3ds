@@ -6,7 +6,7 @@ This manual: ◄ ► or tap = page, L / R = chapter
 4  Power, roads and rail ..... page 8
 5  The tools, one by one ..... page 9
 6  Budget and taxes .......... page 12
-7  Map overlays (ZL / ZR) .... page 13
+7  Map overlays (ZR) .... page 13
 8  Disasters ................. page 14
 9  The eight scenarios ....... page 15
 10 Strategy notes ............ page 17
@@ -38,7 +38,8 @@ X              budget window
 Select         speed: pause, slow, med, fast
 Start          menu: scenarios, load/save,
                disasters, this manual
-ZL / ZR        cycle the map overlays
+ZR             next map overlay
+ZL             swap the screens (any time)
 Dragging near an edge scrolls the map.
 == 2. YOUR FIRST CITY  (1/2)
 Start with "New city" or Dullsville. The clock
@@ -166,7 +167,7 @@ CASH FLOW  must stay positive over a year.
   A deficit auto-cuts services. Running out
   of money freezes building, not the city.
 Tip: the earliest years are the tightest.
-== 7. MAP OVERLAYS  (ZL / ZR)
+== 7. MAP OVERLAYS  (ZR)
 Shown on the minimap and, lightly, on the city.
 Power       red = unpowered zone. Fix first.
 Pollution   from industry, traffic, coal, the

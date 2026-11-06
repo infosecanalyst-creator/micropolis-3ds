@@ -509,7 +509,6 @@ void App::handlePlayInput(const Input &in, uint64_t now) {
     if (in.down & BTN_Y) { zoomOut = !zoomOut; centerOn(curX, curY); }
     if (in.down & BTN_X) { mode = MODE_BUDGET; budgetSel = 0; }
     if (in.down & BTN_START) { mode = MODE_MENU; menuSel = 0; toolPopup = false; }
-    if (in.down & BTN_ZL) overlay = (overlay + OV_COUNT - 1) % OV_COUNT;
     if (in.down & BTN_ZR) overlay = (overlay + 1) % OV_COUNT;
     if (in.down & BTN_SELECT) {
         int sp = sim.simSpeed + 1;

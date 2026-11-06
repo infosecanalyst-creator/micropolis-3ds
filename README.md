@@ -38,7 +38,7 @@ touch map's area (and showing the active overlay); the newest city
 message; and the selected tool with its price — or, while dragging, what the
 stroke has cost so far.
 
-Overlays (ZL/ZR or the top bar): City / Power / Pollution / Crime / Land
+Overlays (ZR or the top bar): City / Power / Pollution / Crime / Land
 value / Traffic / Density / Fire cover / Police cover / Growth, auto-scaled,
 tinted over both maps and the minimap.
 
@@ -61,7 +61,8 @@ well as buttons.
 | X | budget (tax rate, road/police/fire funding) |
 | Start | menu: new city, the 8 scenarios, load, disasters, save, manual |
 | Select | cycle speed (pause/slow/medium/fast) |
-| ZL / ZR | previous / next overlay map |
+| ZR | next overlay map |
+| ZL | swap the screens (any time; the stylus is off while swapped) |
 | 3D slider | stereoscopic depth strength |
 
 Saves go to `sdmc:/3ds/micropolis/autosave.cty` and are resumed at launch.

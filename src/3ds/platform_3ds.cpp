@@ -39,6 +39,8 @@ void shutdown() {
 
 bool running() { return aptMainLoop(); }
 
+static bool g_swapped = false;
+
 void poll(Input &in) {
     hidScanInput();
     const u32 down = hidKeysDown(), held = hidKeysHeld(), rep = hidKeysDownRepeat();
@@ -55,8 +57,12 @@ void poll(Input &in) {
         if (held & m.ctr) in.held |= m.btn;
         if (rep & m.ctr) in.repeat |= m.btn;
     }
-    in.touch = (held & KEY_TOUCH) != 0;
-    in.touchDown = (down & KEY_TOUCH) != 0;
+    // ZL swaps the screens at any time (the app never sees it); the touchscreen is only a
+    // dashboard while swapped, so the stylus is off until you swap back
+    if (down & KEY_ZL) g_swapped = !g_swapped;
+    in.down &= ~BTN_ZL; in.held &= ~BTN_ZL; in.repeat &= ~BTN_ZL;
+    in.touch = (held & KEY_TOUCH) != 0 && !g_swapped;
+    in.touchDown = (down & KEY_TOUCH) != 0 && !g_swapped;
     if (in.touch) {
         touchPosition tp;
         hidTouchRead(&tp);
@@ -85,7 +91,23 @@ static void blit(gfxScreen_t screen, gfx3dSide_t side, const Screen &s) {
     }
 }
 
-void present(const Screen &top, const Screen *topRight, const Screen &bottom) {
+void present(const Screen &top0, const Screen *topRight0, const Screen &bottom0) {
+    static uint8_t swTop[400 * 240 * 3], swBot[320 * 240 * 3];
+    static Screen swT{400, 240, swTop}, swB{320, 240, swBot};
+    const Screen *topP = &top0, *botP = &bottom0, *trP = topRight0;
+    if (g_swapped && top0.w == 400 && top0.h == 240 && bottom0.w == 320 && bottom0.h == 240) {
+        // top: the touch screen's picture, centred 1:1 (320 of 400 wide)
+        memset(swTop, 0, sizeof swTop);
+        for (int y = 0; y < 240; ++y) memcpy(swTop + (y * 400 + 40) * 3, bottom0.rgb + y * 320 * 3, 320 * 3);
+        // bottom: the top screen's picture at 0.8, centred, so all of it shows
+        memset(swBot, 0, sizeof swBot);
+        for (int y = 0; y < 192; ++y)
+            for (int x = 0; x < 320; ++x)
+                memcpy(swBot + ((y + 24) * 320 + x) * 3, top0.rgb + ((y * 5 / 4) * 400 + (x * 5 / 4)) * 3, 3);
+        topP = &swT; botP = &swB; trP = nullptr;
+    }
+    const Screen &top = *topP, &bottom = *botP;
+    const Screen *topRight = trP;
     blit(GFX_TOP, GFX_LEFT, top);
     blit(GFX_TOP, GFX_RIGHT, topRight ? *topRight : top);
     blit(GFX_BOTTOM, GFX_LEFT, bottom);

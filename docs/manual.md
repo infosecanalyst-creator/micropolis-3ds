@@ -40,7 +40,8 @@ Bulldozer, Road, Rail, Power, Residential, Commercial, Industrial, and a last sl
 | X | budget |
 | Select | speed: pause, slow, medium, fast |
 | Start | menu |
-| ZL / ZR | cycle the map overlays |
+| ZR | next map overlay |
+| ZL | swap the screens (any time) |
 
 # Your first city
 Start with New city or Dullsville. The clock is paused: nothing happens until you press Select or tap the speed button.
@@ -108,7 +109,7 @@ Open it with X or by tapping your funds. Taxes are collected every January.
 Tap a row, then - or +; Done closes it. Running out of money stops building, not the city.
 
 # Map overlays
-ZL / ZR or the Overlay button. The overlay tints the map and the minimap.
+ZR or the Overlay button. The overlay tints the map and the minimap.
 
 | Power | blue = no power; fix these first |
 | Pollution | from industry, traffic, coal and the airport |
