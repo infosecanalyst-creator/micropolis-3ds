@@ -1157,6 +1157,7 @@ void App::handleHelpInput(const Input &in) {
     mi.tx = in.touchX; mi.ty = in.touchY;
     mi.cpad_y = in.cpadY;
     g_manual.set_toggle(platform::leftyOn() ? "Left hand: on" : "Left hand: off");
+    g_manual.set_footer(platform::leftyOn() ? "Stick: scroll   A/B/X/Y: section   D-Down: close" : "");
     const bool open = g_manual.update(mi);
     if (g_manual.take_toggle()) platform::setLefty(!platform::leftyOn());
     if (!open) mode = MODE_PLAY;
