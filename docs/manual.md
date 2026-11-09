@@ -8,6 +8,7 @@ Press Start and choose How to play to open this manual. The city waits while you
 - D-Pad: move between the sections on the touch screen. L / R: previous / next section.
 - Tap a section on the touch screen to jump to it.
 - B, Start or Close: back to the game.
+- Left hand: tap Left hand: off / on at the bottom of the touch screen. The D-Pad and the Y, A, B, X buttons swap jobs (Y is up, A is right, B is down, X is left, and the reverse), so the stylus can be held in the left hand. It is remembered, and every button named in this manual follows the swap.
 
 ## The two screens
 The touch screen is a flat map you build on with the stylus. The top screen is a 3D close-up that follows your cursor, with the city's money, date, population, demand bars, a minimap and the latest message.

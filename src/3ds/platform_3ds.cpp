@@ -41,9 +41,33 @@ bool running() { return aptMainLoop(); }
 
 static bool g_swapped = false;
 
+// Left-handed play (toggled on the manual's touch screen): Y<->D-up, A<->D-right, B<->D-down, X<->D-left.
+static bool g_lefty = false, g_leftyLoaded = false;
+static const char *kLeftyFile = "sdmc:/3ds/micropolis/.lefty";
+bool leftyOn() {
+    if (!g_leftyLoaded) { struct stat sb; g_lefty = stat(kLeftyFile, &sb) == 0; g_leftyLoaded = true; }
+    return g_lefty;
+}
+void setLefty(bool on) {
+    g_lefty = on; g_leftyLoaded = true;
+    if (on) { if (FILE *f = fopen(kLeftyFile, "w")) fclose(f); }
+    else remove(kLeftyFile);
+}
+static u32 remapKeys(u32 m) {
+    static const u32 pr[4][2] = { { KEY_Y, KEY_DUP }, { KEY_A, KEY_DRIGHT }, { KEY_B, KEY_DDOWN }, { KEY_X, KEY_DLEFT } };
+    if (!leftyOn()) return m;
+    u32 r = m;
+    for (auto &q : pr) r &= ~(q[0] | q[1]);
+    for (auto &q : pr) {
+        if (m & q[0]) r |= q[1];
+        if (m & q[1]) r |= q[0];
+    }
+    return r;
+}
+
 void poll(Input &in) {
     hidScanInput();
-    const u32 down = hidKeysDown(), held = hidKeysHeld(), rep = hidKeysDownRepeat();
+    const u32 down = remapKeys(hidKeysDown()), held = remapKeys(hidKeysHeld()), rep = remapKeys(hidKeysDownRepeat());
     static const struct { u32 ctr; uint32_t btn; } map[] = {
         { KEY_A, BTN_A }, { KEY_B, BTN_B }, { KEY_X, BTN_X }, { KEY_Y, BTN_Y },
         { KEY_L, BTN_L }, { KEY_R, BTN_R }, { KEY_ZL, BTN_ZL }, { KEY_ZR, BTN_ZR },

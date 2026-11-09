@@ -34,6 +34,8 @@ bool init();
 void shutdown();
 bool running();                 // false when the user closes the app
 void poll(Input &in);
+bool leftyOn();                 // left-handed play: the D-pad and A/B/X/Y swap jobs
+void setLefty(bool on);         // remembered between runs
 // topRight may be null (no stereo); otherwise it is the right-eye image.
 void present(const Screen &top, const Screen *topRight, const Screen &bottom);
 uint64_t millis();

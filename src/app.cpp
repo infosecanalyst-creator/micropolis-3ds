@@ -1156,7 +1156,10 @@ void App::handleHelpInput(const Input &in) {
     mi.touch_down = in.touchDown;
     mi.tx = in.touchX; mi.ty = in.touchY;
     mi.cpad_y = in.cpadY;
-    if (!g_manual.update(mi)) mode = MODE_PLAY;
+    g_manual.set_toggle(platform::leftyOn() ? "Left hand: on" : "Left hand: off");
+    const bool open = g_manual.update(mi);
+    if (g_manual.take_toggle()) platform::setLefty(!platform::leftyOn());
+    if (!open) mode = MODE_PLAY;
 }
 
 void App::drawHelp(Screen &s) {
