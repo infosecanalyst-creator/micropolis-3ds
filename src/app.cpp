@@ -358,16 +358,19 @@ void App::cycleStripTool(int dir) {
 // Taps on the bar above the map and the tool strip below it.
 void App::handleUiTap(int x, int y) {
     if (y < BAR_H) {
+        // buttons sit at y 6..29; the bar's 6-px margins still count as the nearest button
         if (x < 80) { mode = MODE_BUDGET; budgetSel = 0; }                    // funds: budget
-        else if (x >= 140 && x < 184) { int sp = sim.simSpeed + 1; if (sp > 3) sp = 0; sim.setSpeed((short)sp); }
-        else if (x >= 184 && x < 262) overlay = (overlay + 1) % OV_COUNT;      // overlay cycle
-        else if (x >= 262 && x < 288) {                                       // jump to alert
+        else if (x >= 132 && x < 176) { int sp = sim.simSpeed + 1; if (sp > 3) sp = 0; sim.setSpeed((short)sp); }
+        else if (x >= 176 && x < 258) overlay = (overlay + 1) % OV_COUNT;      // overlay cycle
+        else if (x >= 258 && x < 286) {                                       // jump to alert
             if (alertX >= 0 && platform::millis() - alertAt < 30000) centerOn(alertX, alertY);
-        } else if (x >= 288) { mode = MODE_MENU; menuSel = 0; }
+        } else if (x >= 286) { mode = MODE_MENU; menuSel = 0; }
         return;
     }
     if (y >= STRIP_Y) {
-        const int slot = x / 40;
+        int slot = (x - SLOT_X0 + 2) / SLOT_STEP;
+        if (x < SLOT_X0) slot = 0;
+        if (slot > 7) slot = 7;
         if (slot >= 0 && slot < 7) { selectTool(kStripTools[slot]); toolPopup = false; }
         else if (slot == 7) {
             if (toolIdx == extraTool && !toolPopup) toolPopup = true;
@@ -390,7 +393,10 @@ void App::handleMapTouch(const Input &in, uint64_t now) {
             toolPopup = false;
             if (inMap) {
                 // the grid: 4 x 4 cells of 80 x 47 over the map area
-                const int col = in.touchX / 80, row = (in.touchY - MAP_Y0) / 47;
+                int col = (in.touchX - POP_X0 + 2) / POP_STEPX, row = (in.touchY - MAP_Y0 - 4 + 2) / POP_STEPY;
+                if (in.touchX < POP_X0) col = 0;
+                if (col > 3) col = 3;
+                if (row > 3) row = 3;
                 if (col >= 0 && col < 4 && row >= 0 && row < 4) selectTool(row * 4 + col);
                 tstate = T_DONE;
                 return;
@@ -520,6 +526,21 @@ void App::handlePlayInput(const Input &in, uint64_t now) {
     if (in.touch || tstate != T_NONE) handleMapTouch(in, now);
 }
 
+// Two-column button grids (rule 11): 152 x 24 buttons at x 6 / 162, rows 28 apart from y0.
+// Column-major: the first `rows` items run down the left column.
+static int menuHit(int x, int y, int rows, int y0) {
+    if (y < y0 - 2 || x < 4 || x >= 316) return -1;
+    int r = (y - y0 + 2) / 28, c = x < 160 ? 0 : 1;
+    if (r >= rows) return -1;
+    return c * rows + r;
+}
+static void menuButton(Screen &s, int i, int rows, int y0, const char *label, bool sel, int rr, int gg, int bb) {
+    const int c = i / rows, r = i % rows, x = 6 + c * 156, y = y0 + r * 28;
+    if (sel) fb::fillRect(s, x, y, 152, 24, rr, gg, bb); else fb::fillRect(s, x, y, 152, 24, 40, 44, 60);
+    if (sel) fb::rectOutline(s, x, y, 152, 24, 255, 255, 120);
+    fb::text(s, x + (152 - fb::textWidth(label)) / 2, y + 6, label, 230, 230, 230);
+}
+
 void App::handleMenuInput(const Input &in) {
     const int items = 14; // new city, 8 scenarios, load, disasters, save, help, resume
     if (in.repeat & BTN_UP) menuSel = (menuSel + items - 1) % items;
@@ -527,9 +548,8 @@ void App::handleMenuInput(const Input &in) {
     if (in.down & (BTN_B | BTN_START)) { mode = MODE_PLAY; tstate = T_DONE; return; }
     bool pick = (in.down & BTN_A) != 0;
     if (in.touchDown) {
-        const int i = (in.touchY - 33) / 14;
-        if (in.touchX >= 40 && in.touchX < 280 && in.touchY >= 33 && i >= 0 && i < items) { menuSel = i; pick = true; }
-        else if (in.touchX < 40 || in.touchX >= 280) { mode = MODE_PLAY; tstate = T_DONE; return; }   // tap outside: close
+        const int i = menuHit(in.touchX, in.touchY, 7, 32);   // 2 x 7 grid, see drawMenu
+        if (i >= 0 && i < items) { menuSel = i; pick = true; }
     }
     if (pick) {
         tstate = T_DONE;
@@ -555,9 +575,8 @@ void App::handleDisasterInput(const Input &in) {
     if (in.down & (BTN_B | BTN_START)) { mode = MODE_PLAY; tstate = T_DONE; return; }
     bool pick = (in.down & BTN_A) != 0;
     if (in.touchDown) {
-        const int i = (in.touchY - 73) / 14;
-        if (in.touchX >= 60 && in.touchX < 260 && in.touchY >= 73 && i >= 0 && i < items) { menuSel = i; pick = true; }
-        else { mode = MODE_PLAY; tstate = T_DONE; return; }
+        const int i = menuHit(in.touchX, in.touchY, 4, 32);   // 2 x 4 grid, see drawDisasters
+        if (i >= 0 && i < items) { menuSel = i; pick = true; }
     }
     if (pick) {
         tstate = T_DONE;
@@ -582,15 +601,13 @@ void App::handleBudgetInput(const Input &in) {
     if (in.repeat & BTN_RIGHT) delta = 1;
     if (in.touchDown) {
         const int x = in.touchX, y = in.touchY;
-        const int row = (y - 73) / 22;
-        if (y >= 73 && row >= 0 && row < 4 && x >= 20 && x < 300) {
+        const int row = (y - 46) / 30;   // rows of 24-px buttons at y 48 + 30 * row (see drawBudget)
+        if (y >= 46 && row >= 0 && row < 4) {
             budgetSel = row;
-            if (x >= 230 && x < 258) delta = -1;
-            else if (x >= 262 && x < 290) delta = 1;
-        } else if (y >= 186 && y < 206 && x >= 230 && x < 290) {
+            if (x >= 234 && x < 274) delta = -1;
+            else if (x >= 276) delta = 1;
+        } else if (y >= 200 && x >= 240) {
             mode = MODE_PLAY; tstate = T_DONE; return;                                   // Done
-        } else if (x < 20 || x >= 300 || y < 30 || y >= 210) {
-            mode = MODE_PLAY; tstate = T_DONE; return;                                   // tap outside
         }
     }
     if (delta) {
@@ -978,7 +995,7 @@ void App::drawMinimap(Screen &s, int x0, int y0, int step) {
     fb::rectOutline(s, x0 + camX / step, y0 + camY / step, mapCols() / step, (MAP_H / bts()) / step, 255, 255, 255);
 }
 
-static const char *kShortNames[16] = { "Res", "Com", "Ind", "Fire", "Police", "Query", "Wire", "Doze",
+static const char *kShortNames[16] = { "Res", "Com", "Ind", "Fire", "Cops", "Query", "Wire", "Doze",
                                        "Rail", "Road", "Stadm", "Park", "Port", "Coal", "Nuke", "Airpt" };
 
 void App::drawIcon(Screen &s, int x, int y, int i, int w, int sy0, int h) {
@@ -1002,23 +1019,23 @@ void App::drawBottomBar(Screen &s) {
     fb::fillRect(s, 0, 0, BOT_W, BAR_H, 12, 12, 18);
     fmtThousands(num, sizeof(num), (long)sim.totalFunds);
     snprintf(line, sizeof(line), "$%s", num);
-    fb::fillRect(s, 1, 1, 77, BAR_H - 2, 36, 34, 22);
-    fb::textB(s, 5, 2, line, 255, 240, 150);
+    fb::fillRect(s, 6, 6, 72, 24, 36, 34, 22);
+    fb::textB(s, 6 + (72 - fb::textWidth(line, fb::FONT_BOLD)) / 2, 11, line, 255, 240, 150);
     const int m = (sim.cityMonth >= 0 && sim.cityMonth < 12) ? (int)sim.cityMonth : 0;
     snprintf(line, sizeof(line), "%s %ld", kMonths[m], (long)sim.cityYear);
-    fb::text(s, 84, 3, line, 210, 210, 210);
+    fb::text(s, 82, 11, line, 210, 210, 210);
     static const char *sp[4] = { "||", ">", ">>", ">>>" };
     const int si = (sim.simSpeed >= 0 && sim.simSpeed < 4) ? (int)sim.simSpeed : 0;
-    fb::fillRect(s, 141, 1, 42, BAR_H - 2, si == 0 ? 110 : 40, si == 0 ? 40 : 60, si == 0 ? 40 : 50);
-    fb::textB(s, 141 + (42 - fb::textWidth(sp[si], fb::FONT_BOLD)) / 2, 2, sp[si], 240, 240, 240);
-    fb::fillRect(s, 185, 1, 76, BAR_H - 2, overlay ? 40 : 28, overlay ? 50 : 28, overlay ? 90 : 36);
+    fb::fillRect(s, 134, 6, 40, 24, si == 0 ? 110 : 40, si == 0 ? 40 : 60, si == 0 ? 40 : 50);
+    fb::textB(s, 134 + (40 - fb::textWidth(sp[si], fb::FONT_BOLD)) / 2, 11, sp[si], 240, 240, 240);
+    fb::fillRect(s, 178, 6, 78, 24, overlay ? 40 : 28, overlay ? 50 : 28, overlay ? 90 : 36);
     snprintf(line, sizeof(line), "%s", overlay ? kOverlayNames[overlay] : "Overlay");
-    fb::text(s, 185 + (76 - fb::textWidth(line)) / 2, 3, line, overlay ? 220 : 150, overlay ? 230 : 150, 255);
+    fb::text(s, 178 + (78 - fb::textWidth(line)) / 2, 11, line, overlay ? 220 : 150, overlay ? 230 : 150, 255);
     const bool alert = alertX >= 0 && platform::millis() - alertAt < 30000;
-    fb::fillRect(s, 263, 1, 24, BAR_H - 2, alert ? 150 : 28, alert ? 40 : 28, alert ? 30 : 36);
-    fb::textB(s, 272, 2, "!", alert ? 255 : 80, alert ? 230 : 80, alert ? 120 : 90);
-    fb::fillRect(s, 289, 1, 30, BAR_H - 2, 40, 40, 60);
-    for (int i = 0; i < 3; ++i) fb::fillRect(s, 297, 4 + i * 4, 14, 2, 230, 230, 240);   // menu "hamburger"
+    fb::fillRect(s, 260, 6, 24, 24, alert ? 150 : 28, alert ? 40 : 28, alert ? 30 : 36);
+    fb::textB(s, 269, 11, "!", alert ? 255 : 80, alert ? 230 : 80, alert ? 120 : 90);
+    fb::fillRect(s, 288, 6, 26, 24, 40, 40, 60);
+    for (int i = 0; i < 3; ++i) fb::fillRect(s, 294, 12 + i * 5, 14, 2, 230, 230, 240);   // menu "hamburger"
 }
 
 // Strip under the map: 7 fixed tools + the "More" slot.
@@ -1026,17 +1043,17 @@ void App::drawToolStrip(Screen &s) {
     fb::fillRect(s, 0, STRIP_Y, BOT_W, STRIP_H, 16, 16, 22);
     for (int slot = 0; slot < 8; ++slot) {
         const int ti = slot < 7 ? kStripTools[slot] : extraTool;
-        const int x = slot * 40;
+        const int x = SLOT_X0 + slot * SLOT_STEP, by = STRIP_Y + 4, bh = STRIP_H - 10;   // 204..234
         const bool sel = (ti == toolIdx);
-        fb::fillRect(s, x + 1, STRIP_Y + 2, 38, STRIP_H - 3, sel ? 90 : 38, sel ? 90 : 38, sel ? 150 : 50);
-        drawIcon(s, x + 2, STRIP_Y + 3, ti, 36, 4, 16);
-        fb::text(s, x + 20 - fb::textWidth(kShortNames[ti]) / 2, STRIP_Y + 19, kShortNames[ti],
+        fb::fillRect(s, x, by, SLOT_W, bh, sel ? 90 : 38, sel ? 90 : 38, sel ? 150 : 50);
+        drawIcon(s, x + 1, by + 1, ti, SLOT_W - 2, 4, 16);
+        fb::text(s, x + SLOT_W / 2 - fb::textWidth(kShortNames[ti]) / 2, by + 16, kShortNames[ti],
                  sel ? 255 : 210, sel ? 255 : 210, sel ? 160 : 210);
         if (slot == 7) {   // "More": a small ▲ marks the grid
-            fb::fillRect(s, x + 27, STRIP_Y + 2, 12, 9, 70, 70, 110);
-            for (int r = 0; r < 4; ++r) fb::fillRect(s, x + 33 - r, STRIP_Y + 4 + r, 1 + 2 * r, 1, 255, 255, 200);
+            fb::fillRect(s, x + SLOT_W - 12, by, 12, 9, 70, 70, 110);
+            for (int r = 0; r < 4; ++r) fb::fillRect(s, x + SLOT_W - 6 - r, by + 2 + r, 1 + 2 * r, 1, 255, 255, 200);
         }
-        if (sel) fb::rectOutline(s, x + 1, STRIP_Y + 2, 38, STRIP_H - 3, 255, 255, 120);
+        if (sel) fb::rectOutline(s, x, by, SLOT_W, bh, 255, 255, 120);
     }
 }
 
@@ -1046,15 +1063,15 @@ void App::drawToolPopup(Screen &s) {
     char line[32];
     for (int i = 0; i < kToolCount; ++i) {
         const int col = i % 4, row = i / 4;
-        const int x = col * 80, y = MAP_Y0 + row * 47;
+        const int x = POP_X0 + col * POP_STEPX - 2, y = MAP_Y0 + 4 + row * POP_STEPY - 2;   // cell box at x+2, y+2
         const bool sel = (i == toolIdx);
-        fb::fillRect(s, x + 2, y + 2, 76, 43, sel ? 80 : 36, sel ? 80 : 38, sel ? 140 : 52);
-        drawIcon(s, x + 4, y + 3, i, 44, 0, ICON_H);
+        fb::fillRect(s, x + 2, y + 2, POP_W, POP_H, sel ? 80 : 36, sel ? 80 : 38, sel ? 140 : 52);
+        drawIcon(s, x + 4, y + 3, i, 34, 0, std::min(ICON_H, 20));
         if (kTools[i].cost > 0) snprintf(line, sizeof(line), "$%d", kTools[i].cost);
         else snprintf(line, sizeof(line), "free");
-        fb::text(s, x + 76 - fb::textWidth(line), y + 8, line, 200, 230, 200);
-        fb::text(s, x + 5, y + 29, kTools[i].name, 235, 235, 235);
-        if (sel) fb::rectOutline(s, x + 2, y + 2, 76, 43, 255, 255, 120);
+        fb::text(s, x + POP_W - fb::textWidth(line), y + 6, line, 200, 230, 200);
+        fb::text(s, x + 5, y + 24, kTools[i].name, 235, 235, 235);
+        if (sel) fb::rectOutline(s, x + 2, y + 2, POP_W, POP_H, 255, 255, 120);
     }
 }
 
@@ -1082,12 +1099,11 @@ void App::drawBottom() {
 }
 
 void App::drawBudget(Screen &s) {
-    fb::fillRect(s, 20, 30, 280, 180, 20, 24, 36);
-    fb::rectOutline(s, 20, 30, 280, 180, 200, 200, 220);
-    fb::textB(s, 30, 38, "BUDGET", 255, 255, 180);
+    fb::fillRect(s, 0, 0, BOT_W, BOT_H, 20, 24, 36);
+    fb::textB(s, 8, 10, "BUDGET", 255, 255, 180);
     char line[80];
-    snprintf(line, sizeof(line), "Taxes collected   $%ld", (long)sim.taxFund);
-    fb::text(s, 30, 54, line, 220, 220, 220);
+    snprintf(line, sizeof(line), "Taxes collected $%ld", (long)sim.taxFund);
+    fb::text(s, 8, 28, line, 220, 220, 220);
     struct Row { const char *name; int pct; long fund; } rows[4] = {
         { "Tax rate", sim.cityTax, 0 },
         { "Roads",  (int)(sim.roadPercent * 100 + 0.5f), (long)sim.roadFund },
@@ -1095,48 +1111,40 @@ void App::drawBudget(Screen &s) {
         { "Fire",   (int)(sim.firePercent * 100 + 0.5f), (long)sim.fireFund },
     };
     for (int i = 0; i < 4; ++i) {
-        const int y = 76 + i * 22;
-        if (i == budgetSel) fb::fillRect(s, 26, y - 3, 268, 18, 60, 60, 100);
-        if (i == 0) snprintf(line, sizeof(line), "%-10s %3d%%", rows[i].name, rows[i].pct);
-        else snprintf(line, sizeof(line), "%-10s %3d%%   of $%ld", rows[i].name, rows[i].pct, rows[i].fund);
-        fb::text(s, 30, y, line, 240, 240, 240);
-        fb::fillRect(s, 230, y - 3, 28, 18, 70, 50, 50);
-        fb::textB(s, 240, y - 1, "-", 255, 220, 220);
-        fb::fillRect(s, 262, y - 3, 28, 18, 50, 70, 50);
-        fb::textB(s, 272, y - 1, "+", 220, 255, 220);
+        const int by = 48 + i * 30, y = by + 6;
+        if (i == budgetSel) fb::fillRect(s, 6, by, 224, 24, 60, 60, 100);
+        if (i == 0) snprintf(line, sizeof(line), "%-8s %3d%%", rows[i].name, rows[i].pct);
+        else snprintf(line, sizeof(line), "%-8s %3d%% of $%ld", rows[i].name, rows[i].pct, rows[i].fund);
+        fb::text(s, 10, y, line, 240, 240, 240);   // <= 36 chars = 216 px
+        fb::fillRect(s, 236, by, 36, 24, 70, 50, 50);
+        fb::textB(s, 251, y, "-", 255, 220, 220);
+        fb::fillRect(s, 278, by, 36, 24, 50, 70, 50);
+        fb::textB(s, 293, y, "+", 220, 255, 220);
     }
     snprintf(line, sizeof(line), "Cash flow  $%ld", (long)(sim.taxFund - (long)(sim.roadFund * sim.roadPercent)
              - (long)(sim.policeFund * sim.policePercent) - (long)(sim.fireFund * sim.firePercent)));
-    fb::text(s, 30, 170, line, 200, 255, 200);
-    fb::text(s, 30, 192, "\u25c4\u25ba or -/+ adjust", 150, 150, 160);
-    fb::fillRect(s, 230, 186, 60, 20, 60, 60, 100);
-    fb::textB(s, 242, 189, "Done", 255, 255, 200);
+    fb::text(s, 8, 176, line, 200, 255, 200);
+    fb::text(s, 8, 212, "\u25c4\u25ba or -/+ adjust", 150, 150, 160);
+    fb::fillRect(s, 242, 204, 72, 30, 60, 60, 100);
+    fb::textB(s, 242 + (72 - fb::textWidth("Done", fb::FONT_BOLD)) / 2, 213, "Done", 255, 255, 200);
 }
 
 void App::drawMenu(Screen &s) {
-    fb::fillRect(s, 40, 8, 240, 226, 20, 24, 36);
-    fb::rectOutline(s, 40, 8, 240, 226, 200, 200, 220);
-    fb::textB(s, 50, 14, "MICROPOLIS", 255, 255, 180);
+    fb::fillRect(s, 0, 0, BOT_W, BOT_H, 20, 24, 36);
+    fb::textB(s, 8, 10, "MICROPOLIS", 255, 255, 180);
+    fb::text(s, BOT_W - 8 - fb::textWidth("B: back to the city"), 10, "B: back to the city", 150, 150, 160);
     static const char *items[14] = { "New city", "Dullsville 1900", "San Francisco 1906", "Hamburg 1944",
         "Bern 1965", "Tokyo 1957", "Detroit 1972", "Boston 2010", "Rio de Janeiro 2047",
         "Load city...", "Disasters...", "Save city", "How to play", "Resume" };
-    for (int i = 0; i < 14; ++i) {
-        const int y = 34 + i * 14;
-        if (i == menuSel) fb::fillRect(s, 46, y - 1, 228, 14, 60, 60, 100);
-        fb::text(s, 50, y, items[i], 230, 230, 230);
-    }
+    for (int i = 0; i < 14; ++i) menuButton(s, i, 7, 32, items[i], i == menuSel, 60, 60, 100);   // ends at y 224
 }
 
 void App::drawDisasters(Screen &s) {
-    fb::fillRect(s, 60, 50, 200, 130, 36, 20, 20);
-    fb::rectOutline(s, 60, 50, 200, 130, 220, 180, 180);
-    fb::textB(s, 70, 56, "DISASTERS", 255, 200, 200);
+    fb::fillRect(s, 0, 0, BOT_W, 32 + 4 * 28 + 6, 36, 20, 20);
+    fb::rectOutline(s, 0, 0, BOT_W, 32 + 4 * 28 + 6, 220, 180, 180);
+    fb::textB(s, 8, 10, "DISASTERS", 255, 200, 200);
     static const char *items[7] = { "Fire", "Flood", "Tornado", "Earthquake", "Monster", "Meltdown", "Back" };
-    for (int i = 0; i < 7; ++i) {
-        const int y = 74 + i * 14;
-        if (i == menuSel) fb::fillRect(s, 66, y - 1, 188, 14, 100, 60, 60);
-        fb::text(s, 70, y, items[i], 230, 230, 230);
-    }
+    for (int i = 0; i < 7; ++i) menuButton(s, i, 4, 32, items[i], i == menuSel, 100, 60, 60);
 }
 
 // ---- Manual (docs/manual.txt -> assets/manual.h) ---------------------------
@@ -1200,13 +1208,13 @@ void App::scanCities() {
 
 void App::handleLoadCityInput(const Input &in) {
     if (in.down & (BTN_B | BTN_START)) { mode = MODE_MENU; menuSel = 9; return; }
-    if (in.touchDown && in.touchY >= BOT_H - 20 && in.touchX >= BOT_W - 70) { mode = MODE_MENU; menuSel = 9; return; }
+    if (in.touchDown && in.touchY >= 200 && in.touchX >= 240) { mode = MODE_MENU; menuSel = 9; return; }
     if (nCities == 0) return;
     if (in.repeat & BTN_UP) citySel = (citySel + nCities - 1) % nCities;
     if (in.repeat & BTN_DOWN) citySel = (citySel + 1) % nCities;
     bool pick = (in.down & BTN_A) != 0;
-    if (in.touchDown && in.touchY >= 25 && in.touchY < 25 + 13 * 14) {
-        const int i = (citySel / 13) * 13 + (in.touchY - 25) / 14;
+    if (in.touchDown && in.touchY >= 28 && in.touchY < 28 + 6 * 28) {
+        const int i = (citySel / 6) * 6 + (in.touchY - 28) / 28;
         if (i < nCities) { citySel = i; pick = true; }
     }
     if (pick) {
@@ -1229,19 +1237,21 @@ void App::drawLoadCity(Screen &s) {
         fb::text(s, 8, 66, "Copy Micropolis .cty city files there.", 180, 180, 190);
         fb::text(s, 8, 80, "(Menu > Save city writes autosave.cty.)", 160, 160, 170);
     } else {
-        const int perPage = 13, first = (citySel / perPage) * perPage;
+        const int perPage = 6, first = (citySel / perPage) * perPage;
         for (int i = first; i < nCities && i < first + perPage; ++i) {
-            const int y = 26 + (i - first) * 14;
-            if (i == citySel) fb::fillRect(s, 4, y - 1, BOT_W - 8, 14, 60, 60, 100);
-            fb::text(s, 8, y, cityNames[i], 230, 230, 230);
+            const int y = 30 + (i - first) * 28;
+            fb::fillRect(s, 6, y, BOT_W - 12, 24, i == citySel ? 60 : 36, i == citySel ? 60 : 40, i == citySel ? 100 : 56);
+            char nm[64]; snprintf(nm, sizeof(nm), "%s", cityNames[i]);
+            if ((int)strlen(nm) > 49) { nm[46] = '.'; nm[47] = '.'; nm[48] = '.'; nm[49] = 0; }   // 49 x 6 px fits 296
+            fb::text(s, 12, y + 6, nm, 230, 230, 230);
         }
         char line[48];
         snprintf(line, sizeof(line), "%d/%d", citySel + 1, nCities);
         fb::text(s, BOT_W - 8 - fb::textWidth(line), 6, line, 140, 140, 160);
     }
-    fb::text(s, 8, BOT_H - 16, "Tap a city or A: load", 140, 140, 160);
-    fb::fillRect(s, BOT_W - 66, BOT_H - 20, 62, 18, 60, 60, 100);
-    fb::textB(s, BOT_W - 56, BOT_H - 18, "Back", 255, 255, 200);
+    fb::text(s, 8, 212, "Tap a city or A: load", 140, 140, 160);
+    fb::fillRect(s, 242, 204, 72, 30, 60, 60, 100);
+    fb::textB(s, 242 + (72 - fb::textWidth("Back", fb::FONT_BOLD)) / 2, 213, "Back", 255, 255, 200);
 }
 
 void App::render(float slider) {

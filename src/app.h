@@ -141,7 +141,10 @@ private:
     int toolCost(EditingTool t) const;
 
     // bottom-screen layout
-    static const int BAR_H = 18, MAP_Y0 = 18, MAP_H = 188, STRIP_Y = 206, STRIP_H = 34;
+    // rule 11: every button >= 24 px tall, >= 4 px apart, >= 6 px from the screen edges
+    static const int BAR_H = 32, MAP_Y0 = 32, MAP_H = 168, STRIP_Y = 200, STRIP_H = 40;
+    static const int SLOT_X0 = 6, SLOT_W = 35, SLOT_STEP = 39;          // tool strip: 8 slots
+    static const int POP_X0 = 6, POP_W = 74, POP_STEPX = 78, POP_H = 37, POP_STEPY = 41;   // 4 x 4 tool grid
 
     uint8_t *topBuf, *topRBuf, *botBuf;
 };
