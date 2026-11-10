@@ -1,0 +1,32 @@
+allocate.cpp
+animate.cpp
+budget.cpp
+connect.cpp
+disasters.cpp
+evaluate.cpp
+fileio.cpp
+generate.cpp
+graph.cpp
+initialize.cpp
+main.cpp
+map.cpp
+message.cpp
+micropolis.cpp
+position.cpp
+power.cpp
+random.cpp
+resource.cpp
+scan.cpp
+simulate.cpp
+sprite.cpp
+stubs.cpp
+tool.cpp
+traffic.cpp
+update.cpp
+utilities.cpp
+zone.cpp
+app.cpp
+platform_3ds.cpp
+built ... micropolis.smdh
+linking micropolis.elf
+built ... micropolis.3dsx
