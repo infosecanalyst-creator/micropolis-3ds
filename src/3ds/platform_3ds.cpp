@@ -1,4 +1,6 @@
 // Nintendo 3DS backend (libctru, software framebuffers, stereoscopic top).
+#include <algorithm>
+#include <cstdlib>
 #include <3ds.h>
 #include <stdio.h>
 #include <stdarg.h>
@@ -40,6 +42,7 @@ void shutdown() {
 bool running() { return aptMainLoop(); }
 
 static bool g_swapped = false;
+static int g_ptrX = 160, g_ptrY = 120;   // swapped: the touchpad pointer, in touch-screen picture coordinates
 
 // Left-handed play (toggled on the manual's touch screen): Y<->D-up, A<->D-right, B<->D-down, X<->D-left.
 static bool g_lefty = false, g_leftyLoaded = false;
@@ -81,8 +84,8 @@ void poll(Input &in) {
         if (held & m.ctr) in.held |= m.btn;
         if (rep & m.ctr) in.repeat |= m.btn;
     }
-    // ZL swaps the screens at any time (the app never sees it); the touchscreen is only a
-    // dashboard while swapped, so the stylus is off until you swap back
+    // ZL swaps the screens at any time (the app never sees it); while swapped the touchscreen is a
+    // touchpad (below)
     if (down & KEY_ZL) g_swapped = !g_swapped;
     in.down &= ~BTN_ZL; in.held &= ~BTN_ZL; in.repeat &= ~BTN_ZL;
     in.touch = (held & KEY_TOUCH) != 0 && !g_swapped;
@@ -93,6 +96,31 @@ void poll(Input &in) {
         in.touchX = tp.px;
         in.touchY = tp.py;
     }
+    // Swapped (UI rule 7): the touch screen is a touchpad for the game on the top screen. Slide moves
+    // a pointer (relative); a short tap is a tap at the pointer, delivered to the app as one touch frame.
+    static bool padOn = false, padMoved = false, tapPending = false;
+    static int lastX, lastY, startX, startY;
+    static u64 padAt;
+    if (g_swapped) {
+        if (tapPending) {                      // the tap's release frame
+            tapPending = false;
+        } else if (down & KEY_TOUCH) {
+            touchPosition tp; hidTouchRead(&tp);
+            padOn = true; padMoved = false; lastX = startX = tp.px; lastY = startY = tp.py; padAt = osGetTime();
+        } else if (padOn && (held & KEY_TOUCH)) {
+            touchPosition tp; hidTouchRead(&tp);
+            if (abs(tp.px - startX) + abs(tp.py - startY) > 6) padMoved = true;
+            g_ptrX = std::max(0, std::min(319, g_ptrX + (tp.px - lastX)));
+            g_ptrY = std::max(0, std::min(239, g_ptrY + (tp.py - lastY)));
+            lastX = tp.px; lastY = tp.py;
+        } else if (padOn && !(held & KEY_TOUCH)) {
+            padOn = false;
+            if (!padMoved && osGetTime() - padAt < 350) {
+                in.touch = in.touchDown = true; in.touchX = g_ptrX; in.touchY = g_ptrY;
+                tapPending = true;
+            }
+        }
+    } else padOn = tapPending = false;
     circlePosition cp;
     hidCircleRead(&cp);
     in.cpadX = cp.dx;
@@ -120,9 +148,22 @@ void present(const Screen &top0, const Screen *topRight0, const Screen &bottom0)
     static Screen swT{400, 240, swTop}, swB{320, 240, swBot};
     const Screen *topP = &top0, *botP = &bottom0, *trP = topRight0;
     if (g_swapped && top0.w == 400 && top0.h == 240 && bottom0.w == 320 && bottom0.h == 240) {
-        // top: the touch screen's picture, centred 1:1 (320 of 400 wide)
-        memset(swTop, 0, sizeof swTop);
-        for (int y = 0; y < 240; ++y) memcpy(swTop + (y * 400 + 40) * 3, bottom0.rgb + y * 320 * 3, 320 * 3);
+        // top (UI rule 8): the touch screen's picture fills the whole 400x240 screen, no side bars
+        for (int y = 0; y < 240; ++y)
+            for (int x = 0; x < 400; ++x)
+                memcpy(swTop + (y * 400 + x) * 3, bottom0.rgb + (y * 320 + x * 4 / 5) * 3, 3);
+        // the touchpad pointer: a small arrow, white with a black edge, so it shows on any picture
+        {
+            const int px = g_ptrX * 5 / 4, py = g_ptrY;
+            for (int r = 0; r < 12; ++r)
+                for (int c = 0; c <= r / 2 + 1 && c < 7; ++c) {
+                    const int x = px + c, y = py + r;
+                    if (x < 0 || x >= 400 || y < 0 || y >= 240) continue;
+                    const bool edge = c == 0 || c == r / 2 + 1 || r == 11;
+                    uint8_t *q = swTop + (y * 400 + x) * 3;
+                    q[0] = q[1] = q[2] = edge ? 0 : 255;
+                }
+        }
         // bottom: the top screen's picture at 0.8, centred, so all of it shows
         memset(swBot, 0, sizeof swBot);
         for (int y = 0; y < 192; ++y)
