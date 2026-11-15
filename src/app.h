@@ -64,6 +64,7 @@ private:
     bool hasAutosave = false;              // entry 0 is <saveDir>/autosave.cty
     void scanCities();
     int menuSel = 0;
+    int pmPage = 0;   // START menu page: 0 main, 1 new city / scenarios, 2 exit question
     int budgetSel = 0;
     // Overlay / minimap modes
     enum Overlay { OV_NONE, OV_POWER, OV_POLLUTION, OV_CRIME, OV_LANDVALUE, OV_TRAFFIC,

@@ -364,7 +364,7 @@ void App::handleUiTap(int x, int y) {
         else if (x >= 176 && x < 258) overlay = (overlay + 1) % OV_COUNT;      // overlay cycle
         else if (x >= 258 && x < 286) {                                       // jump to alert
             if (alertX >= 0 && platform::millis() - alertAt < 30000) centerOn(alertX, alertY);
-        } else if (x >= 286) { mode = MODE_MENU; menuSel = 0; }
+        } else if (x >= 286) { mode = MODE_MENU; pmPage = 0; menuSel = 0; }
         return;
     }
     if (y >= STRIP_Y) {
@@ -514,7 +514,7 @@ void App::handlePlayInput(const Input &in, uint64_t now) {
     }
     if (in.down & BTN_Y) { zoomOut = !zoomOut; centerOn(curX, curY); }
     if (in.down & BTN_X) { mode = MODE_BUDGET; budgetSel = 0; }
-    if (in.down & BTN_START) { mode = MODE_MENU; menuSel = 0; toolPopup = false; }
+    if (in.down & BTN_START) { mode = MODE_MENU; pmPage = 0; menuSel = 0; toolPopup = false; }
     if (in.down & BTN_ZR) overlay = (overlay + 1) % OV_COUNT;
     if (in.down & BTN_SELECT) {
         int sp = sim.simSpeed + 1;
@@ -535,36 +535,83 @@ static int menuHit(int x, int y, int rows, int y0) {
     return c * rows + r;
 }
 static void menuButton(Screen &s, int i, int rows, int y0, const char *label, bool sel, int rr, int gg, int bb) {
+    // house style (claude/3ds-look-and-feel.md): blue face, light edge, shadow, gold focus ring
+    (void)rr; (void)gg; (void)bb;
     const int c = i / rows, r = i % rows, x = 6 + c * 156, y = y0 + r * 28;
-    if (sel) fb::fillRect(s, x, y, 152, 24, rr, gg, bb); else fb::fillRect(s, x, y, 152, 24, 40, 44, 60);
-    if (sel) fb::rectOutline(s, x, y, 152, 24, 255, 255, 120);
-    fb::text(s, x + (152 - fb::textWidth(label)) / 2, y + 6, label, 230, 230, 230);
+    fb::fillRect(s, x + 2, y + 2, 152, 24, 20, 30, 70);
+    fb::fillRect(s, x, y, 152, 24, 40, 56, 120);
+    fb::rectOutline(s, x, y, 152, 24, 120, 150, 230);
+    if (sel) { fb::rectOutline(s, x - 2, y - 2, 156, 28, 255, 204, 64); fb::rectOutline(s, x - 3, y - 3, 158, 30, 255, 204, 64); }
+    fb::text(s, x + (152 - fb::textWidth(label)) / 2, y + 6, label, 235, 240, 250);
 }
+// House frame: navy, a header bar with the title in gold, a hint strip at the bottom.
+static void houseFrame(Screen &s, const char *title, const char *hint) {
+    fb::fillRect(s, 0, 0, BOT_W, BOT_H, 8, 12, 40);
+    fb::fillRect(s, 0, 0, BOT_W, 22, 40, 56, 120);
+    fb::fillRect(s, 0, 22, BOT_W, 1, 120, 150, 230);
+    fb::textB(s, 8, 5, title, 255, 204, 64);
+    fb::fillRect(s, 0, 224, BOT_W, 16, 40, 56, 120);
+    fb::fillRect(s, 0, 224, BOT_W, 1, 120, 150, 230);
+    fb::text(s, (BOT_W - fb::textWidth(hint)) / 2, 228, hint, 255, 204, 64);
+}
+static const char *const kPmMain[7] = { "RESUME", "MANUAL", "SAVE CITY", "LOAD CITY", "NEW CITY...", "DISASTERS...", "EXIT GAME" };
+static const char *const kPmCities[10] = { "New city", "Dullsville 1900", "San Francisco 1906", "Hamburg 1944",
+    "Bern 1965", "Tokyo 1957", "Detroit 1972", "Boston 2010", "Rio de Janeiro 2047", "Back" };
 
 void App::handleMenuInput(const Input &in) {
-    const int items = 14; // new city, 8 scenarios, load, disasters, save, help, resume
+    // START menu, house style. Page 0: main list (2 x 4, column-major), page 1: new city and
+    // scenarios (2 x 5), page 2: exit question (YES / NO, NO chosen).
+    const int rows = pmPage == 0 ? 4 : pmPage == 1 ? 5 : 1;
+    const int items = pmPage == 0 ? 7 : pmPage == 1 ? 10 : 2;
     if (in.repeat & BTN_UP) menuSel = (menuSel + items - 1) % items;
     if (in.repeat & BTN_DOWN) menuSel = (menuSel + 1) % items;
-    if (in.down & (BTN_B | BTN_START)) { mode = MODE_PLAY; tstate = T_DONE; return; }
+    if (in.repeat & (BTN_LEFT | BTN_RIGHT)) {
+        int n = menuSel + ((in.repeat & BTN_RIGHT) ? rows : -rows);
+        if (n >= 0 && n < items) menuSel = n;
+    }
+    if (in.down & (BTN_B | BTN_START)) {
+        if (pmPage == 0) { mode = MODE_PLAY; tstate = T_DONE; }
+        else { menuSel = pmPage == 1 ? 4 : 6; pmPage = 0; }
+        return;
+    }
     bool pick = (in.down & BTN_A) != 0;
     if (in.touchDown) {
-        const int i = menuHit(in.touchX, in.touchY, 7, 32);   // 2 x 7 grid, see drawMenu
+        const int i = menuHit(in.touchX, in.touchY, rows, pmPage == 2 ? 120 : 32);
         if (i >= 0 && i < items) { menuSel = i; pick = true; }
     }
-    if (pick) {
-        tstate = T_DONE;
-        if (menuSel == 0) { newCity(0); mode = MODE_PLAY; }
-        else if (menuSel >= 1 && menuSel <= 8) { loadScenario(menuSel); mode = MODE_PLAY; }
-        else if (menuSel == 9) { scanCities(); citySel = 0; mode = MODE_LOADCITY; }
-        else if (menuSel == 10) { mode = MODE_DISASTERS; menuSel = 0; }
-        else if (menuSel == 12) { g_manual.open(); mode = MODE_HELP; }
-        else if (menuSel == 11) {
-            char path[256];
+    if (!pick) return;
+    tstate = T_DONE;
+    if (pmPage == 2) {
+        if (menuSel == 0) {
+            char path[256];   // never lose progress: the city is saved before the game ends
             snprintf(path, sizeof(path), "%s/autosave.cty", platform::saveDir());
             sim.saveCityAs(path);
-            pushMessage("City saved.", false);
-            mode = MODE_PLAY;
-        } else mode = MODE_PLAY;
+            quitRequested = true;
+        }
+        pmPage = 0; menuSel = 6;
+        return;
+    }
+    if (pmPage == 1) {
+        if (menuSel == 0) { newCity(0); mode = MODE_PLAY; }
+        else if (menuSel <= 8) { loadScenario(menuSel); mode = MODE_PLAY; }
+        pmPage = 0; menuSel = 4;
+        return;
+    }
+    switch (menuSel) {
+    case 0: mode = MODE_PLAY; break;
+    case 1: g_manual.open(); mode = MODE_HELP; break;
+    case 2: {
+        char path[256];
+        snprintf(path, sizeof(path), "%s/autosave.cty", platform::saveDir());
+        sim.saveCityAs(path);
+        pushMessage("City saved.", false);
+        mode = MODE_PLAY;
+        break;
+    }
+    case 3: scanCities(); citySel = 0; mode = MODE_LOADCITY; break;
+    case 4: pmPage = 1; menuSel = 0; break;
+    case 5: mode = MODE_DISASTERS; menuSel = 0; break;
+    case 6: pmPage = 2; menuSel = 1; break;
     }
 }
 
@@ -1130,13 +1177,22 @@ void App::drawBudget(Screen &s) {
 }
 
 void App::drawMenu(Screen &s) {
-    fb::fillRect(s, 0, 0, BOT_W, BOT_H, 20, 24, 36);
-    fb::textB(s, 8, 10, "MICROPOLIS", 255, 255, 180);
-    fb::text(s, BOT_W - 8 - fb::textWidth("B: back to the city"), 10, "B: back to the city", 150, 150, 160);
-    static const char *items[14] = { "New city", "Dullsville 1900", "San Francisco 1906", "Hamburg 1944",
-        "Bern 1965", "Tokyo 1957", "Detroit 1972", "Boston 2010", "Rio de Janeiro 2047",
-        "Load city...", "Disasters...", "Save city", "How to play", "Resume" };
-    for (int i = 0; i < 14; ++i) menuButton(s, i, 7, 32, items[i], i == menuSel, 60, 60, 100);   // ends at y 224
+    if (pmPage == 2) {
+        houseFrame(s, "EXIT GAME", "A Select   B Back");
+        const char *q = "Exit Micropolis?", *q2 = "Your city is saved first.";
+        fb::textB(s, (BOT_W - fb::textWidth(q, fb::FONT_BOLD)) / 2, 64, q, 235, 240, 250);
+        fb::text(s, (BOT_W - fb::textWidth(q2)) / 2, 86, q2, 170, 185, 225);
+        menuButton(s, 0, 1, 120, "YES", menuSel == 0, 0, 0, 0);
+        menuButton(s, 1, 1, 120, "NO", menuSel == 1, 0, 0, 0);
+        return;
+    }
+    if (pmPage == 1) {
+        houseFrame(s, "NEW CITY", "A Select   B Back");
+        for (int i = 0; i < 10; ++i) menuButton(s, i, 5, 32, kPmCities[i], i == menuSel, 0, 0, 0);
+        return;
+    }
+    houseFrame(s, "MENU", "A Select   B Back   ZL Swap");
+    for (int i = 0; i < 7; ++i) menuButton(s, i, 4, 32, kPmMain[i], i == menuSel, 0, 0, 0);
 }
 
 void App::drawDisasters(Screen &s) {
@@ -1207,8 +1263,8 @@ void App::scanCities() {
 }
 
 void App::handleLoadCityInput(const Input &in) {
-    if (in.down & (BTN_B | BTN_START)) { mode = MODE_MENU; menuSel = 9; return; }
-    if (in.touchDown && in.touchY >= 200 && in.touchX >= 240) { mode = MODE_MENU; menuSel = 9; return; }
+    if (in.down & (BTN_B | BTN_START)) { mode = MODE_MENU; pmPage = 0; menuSel = 3; return; }
+    if (in.touchDown && in.touchY >= 200 && in.touchX >= 240) { mode = MODE_MENU; pmPage = 0; menuSel = 3; return; }
     if (nCities == 0) return;
     if (in.repeat & BTN_UP) citySel = (citySel + nCities - 1) % nCities;
     if (in.repeat & BTN_DOWN) citySel = (citySel + 1) % nCities;
