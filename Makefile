@@ -30,6 +30,10 @@ CFLAGS  := -g -Wall -O2 -mword-relocations -ffunction-sections -fdata-sections \
 CXXFLAGS := $(CFLAGS) -fno-rtti -fno-exceptions -std=gnu++11 -w
 ASFLAGS := -g $(ARCH)
 LDFLAGS  = -specs=3dsx.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map) -Wl,--gc-sections
+# Hardware test hooks (3ds-test-suite hwtest/selftest): inactive unless the test agent
+# starts the game with --selftest=<script>.
+SELFTEST_WRAP := hidScanInput hidKeysHeld hidKeysDown hidKeysDownRepeat hidKeysUp hidTouchRead hidCircleRead irrstCstickRead aptMainLoop
+LDFLAGS  += $(foreach f,$(SELFTEST_WRAP),-Wl,--wrap=$(f))
 
 LIBS    := -lctru -lm
 LIBDIRS := $(CTRULIB)
