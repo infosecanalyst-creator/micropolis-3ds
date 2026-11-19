@@ -1243,6 +1243,7 @@ void App::handleHelpInput(const Input &in) {
         if ((m.rep ? in.repeat : in.down) & m.b) mi.down |= m.k;
     mi.touch_down = in.touchDown;
     mi.tx = in.touchX; mi.ty = in.touchY;
+    mi.has_hold = true; mi.touch_held = in.touch; mi.hx = in.touchX; mi.hy = in.touchY;   // drag to scroll
     mi.cpad_y = in.cpadY;
     g_manual.set_toggle(platform::leftyOn() ? "Left hand: on" : "Left hand: off");
     g_manual.set_footer(platform::leftyOn() ? "Stick: scroll   A/B/X/Y: section   D-Down: close" : "");
