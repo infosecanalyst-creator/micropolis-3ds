@@ -949,10 +949,10 @@ void App::drawTopHud(Screen &s) {
     fb::textB(s, 5, 2, line, sim.totalFunds < 500 ? 255 : 255, sim.totalFunds < 500 ? 110 : 240, sim.totalFunds < 500 ? 90 : 150);
     const int m = (sim.cityMonth >= 0 && sim.cityMonth < 12) ? (int)sim.cityMonth : 0;
     snprintf(line, sizeof(line), "%s %ld", kMonths[m], (long)sim.cityYear);
-    fb::textB(s, narrow ? 60 : 104, 2, line, 230, 230, 230);
+    fb::textB(s, narrow ? 66 : 104, 2, line, 230, 230, 230);
     fmtThousands(num, sizeof(num), (long)sim.cityPop);
     snprintf(line, sizeof(line), "Pop %s", num);
-    fb::textB(s, narrow ? 120 : 184, 2, line, 230, 230, 230);
+    fb::textB(s, narrow ? 136 : 184, 2, line, 230, 230, 230);
     const char *spd = sim.simSpeed == 0 ? (narrow ? "PAUSE" : "PAUSED") : sim.simSpeed == 1 ? "Slow" : sim.simSpeed == 2 ? (narrow ? "Med" : "Medium") : "Fast";
     fb::textB(s, narrow ? TW - 92 : 290, 2, spd, sim.simSpeed == 0 ? 255 : 170, sim.simSpeed == 0 ? 120 : 220, sim.simSpeed == 0 ? 120 : 170);
     // R C I demand: small bars around a centre line
