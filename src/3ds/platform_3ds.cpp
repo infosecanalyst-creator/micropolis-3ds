@@ -42,6 +42,17 @@ void shutdown() {
 bool running() { return aptMainLoop(); }
 
 static bool g_swapped = false;
+// Rule 16 (remember the setup): the swap is kept in a marker file, like Left hand.
+static const char *kSwapFile = "sdmc:/3ds/micropolis/.swapped";
+static bool g_swapLoaded = false;
+static void loadSwap() {
+    if (g_swapLoaded) return;
+    struct stat sb; g_swapped = stat(kSwapFile, &sb) == 0; g_swapLoaded = true;
+}
+static void saveSwap() {
+    if (g_swapped) { if (FILE *f = fopen(kSwapFile, "w")) fclose(f); }
+    else remove(kSwapFile);
+}
 static int g_ptrX = 160, g_ptrY = 120;   // swapped: the touchpad pointer, in touch-screen picture coordinates
 
 // Left-handed play (toggled on the manual's touch screen): Y<->D-up, A<->D-right, B<->D-down, X<->D-left.
@@ -86,7 +97,8 @@ void poll(Input &in) {
     }
     // ZL swaps the screens at any time (the app never sees it); while swapped the touchscreen is a
     // touchpad (below)
-    if (down & KEY_ZL) g_swapped = !g_swapped;
+    loadSwap();
+    if (down & KEY_ZL) { g_swapped = !g_swapped; saveSwap(); }
     in.down &= ~BTN_ZL; in.held &= ~BTN_ZL; in.repeat &= ~BTN_ZL;
     in.touch = (held & KEY_TOUCH) != 0 && !g_swapped;
     in.touchDown = (down & KEY_TOUCH) != 0 && !g_swapped;
@@ -143,7 +155,7 @@ static void blit(gfxScreen_t screen, gfx3dSide_t side, const Screen &s) {
     }
 }
 
-bool swapped() { return g_swapped; }
+bool swapped() { loadSwap(); return g_swapped; }
 
 void present(const Screen &top0, const Screen *topRight0, const Screen &bottom0) {
     static uint8_t swTop[400 * 240 * 3], swBot[320 * 240 * 3];
