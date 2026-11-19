@@ -277,11 +277,11 @@ void App::keepCursorVisible() {
 // glides after the cursor, so it always shows what you are building.
 int App::topTs() const { return zoomOut ? 16 : 32; }
 
-void App::topOrigin(int &ox, int &oy) const {
+void App::topOrigin(int &ox, int &oy, int w) const {
     const int ts = topTs();
-    ox = (int)(topCx * ts / 16) - TOP_W / 2;
+    ox = (int)(topCx * ts / 16) - w / 2;
     oy = (int)(topCy * ts / 16) - TOP_H / 2;
-    if (ox > WORLD_W * ts - TOP_W) ox = WORLD_W * ts - TOP_W;
+    if (ox > WORLD_W * ts - w) ox = WORLD_W * ts - w;
     if (oy > WORLD_H * ts - TOP_H) oy = WORLD_H * ts - TOP_H;
     if (ox < 0) ox = 0;
     if (oy < 0) oy = 0;
@@ -888,7 +888,7 @@ void App::drawFootprint(Screen &s, const View &v, int dx, bool thick) {
 
 void App::drawCity(Screen &s, int eye, float slider) {
     fb::clear(s, 0, 0, 0);
-    View v; topOrigin(v.ox, v.oy); v.ts = topTs(); v.sy0 = 0; v.w = TOP_W; v.h = TOP_H;
+    View v; topOrigin(v.ox, v.oy, s.w); v.ts = topTs(); v.sy0 = 0; v.w = s.w; v.h = TOP_H;
     const float parScale = v.ts == 32 ? 1.5f : 1.f;
     // The cursor sits on the surface it points at: the ground for empty land,
     // roads and water, or the top of the tallest building under its footprint.
@@ -939,18 +939,22 @@ static const char *kMonths[12] = { "Jan","Feb","Mar","Apr","May","Jun","Jul","Au
 //   foot:   newest city message, and the selected tool with its price
 void App::drawTopHud(Screen &s) {
     char line[128], num[32];
-    fb::darken(s, 0, 0, TOP_W, 18);
+    // laid out for the screen it is drawn on: 400 on top, 320 on the touch screen when swapped
+    // (principle: swapped text stays full size and readable, never squeezed or cut off)
+    const int TW = s.w;
+    const bool narrow = TW < 400;
+    fb::darken(s, 0, 0, TW, 18);
     fmtThousands(num, sizeof(num), (long)sim.totalFunds);
     snprintf(line, sizeof(line), "$%s", num);
     fb::textB(s, 5, 2, line, sim.totalFunds < 500 ? 255 : 255, sim.totalFunds < 500 ? 110 : 240, sim.totalFunds < 500 ? 90 : 150);
     const int m = (sim.cityMonth >= 0 && sim.cityMonth < 12) ? (int)sim.cityMonth : 0;
     snprintf(line, sizeof(line), "%s %ld", kMonths[m], (long)sim.cityYear);
-    fb::textB(s, 104, 2, line, 230, 230, 230);
+    fb::textB(s, narrow ? 60 : 104, 2, line, 230, 230, 230);
     fmtThousands(num, sizeof(num), (long)sim.cityPop);
     snprintf(line, sizeof(line), "Pop %s", num);
-    fb::textB(s, 184, 2, line, 230, 230, 230);
-    const char *spd = sim.simSpeed == 0 ? "PAUSED" : sim.simSpeed == 1 ? "Slow" : sim.simSpeed == 2 ? "Medium" : "Fast";
-    fb::textB(s, 290, 2, spd, sim.simSpeed == 0 ? 255 : 170, sim.simSpeed == 0 ? 120 : 220, sim.simSpeed == 0 ? 120 : 170);
+    fb::textB(s, narrow ? 120 : 184, 2, line, 230, 230, 230);
+    const char *spd = sim.simSpeed == 0 ? (narrow ? "PAUSE" : "PAUSED") : sim.simSpeed == 1 ? "Slow" : sim.simSpeed == 2 ? (narrow ? "Med" : "Medium") : "Fast";
+    fb::textB(s, narrow ? TW - 92 : 290, 2, spd, sim.simSpeed == 0 ? 255 : 170, sim.simSpeed == 0 ? 120 : 220, sim.simSpeed == 0 ? 120 : 170);
     // R C I demand: small bars around a centre line
     float rd, cd, id;
     sim.getDemands(&rd, &cd, &id);
@@ -958,7 +962,7 @@ void App::drawTopHud(Screen &s) {
     static const uint8_t col[3][3] = { {80, 220, 80}, {90, 140, 255}, {250, 210, 60} };
     static const char *lab[3] = { "R", "C", "I" };
     for (int i = 0; i < 3; ++i) {
-        const int x = 352 + i * 16, mid = 9;
+        const int x = TW - 48 + i * 16, mid = 9;
         fb::text(s, x - 7, 3, lab[i], col[i][0], col[i][1], col[i][2]);
         fb::fillRect(s, x, 1, 6, 16, 40, 40, 48);
         fb::fillRect(s, x, mid, 6, 1, 120, 120, 130);
@@ -968,21 +972,39 @@ void App::drawTopHud(Screen &s) {
     }
 
     // minimap, top-right (every 2nd tile: 60 x 50)
-    fb::fillRect(s, TOP_W - 64, 20, 64, 54, 0, 0, 0);
-    drawMinimap(s, TOP_W - 62, 22, 2);
+    fb::fillRect(s, TW - 64, 20, 64, 54, 0, 0, 0);
+    drawMinimap(s, TW - 62, 22, 2);
     if (overlay != OV_NONE) {
         const int w = fb::textWidth(kOverlayNames[overlay]) + 6;
-        fb::darken(s, TOP_W - w, 75, w, 14);
-        fb::text(s, TOP_W - w + 3, 76, kOverlayNames[overlay], 200, 220, 255);
+        fb::darken(s, TW - w, 75, w, 14);
+        fb::text(s, TW - w + 3, 76, kOverlayNames[overlay], 200, 220, 255);
     }
 
     // foot: newest message (8 s), then the tool line
     const uint64_t now = platform::millis();
     if (nmsgs > 0 && now - msgs[0].at < 8000) {
-        const int w = std::min(TOP_W, fb::textWidth(msgs[0].text, fb::FONT_BOLD) + 10);
-        fb::darken(s, 0, TOP_H - 34, w, 17);
-        fb::textB(s, 5, TOP_H - 33, msgs[0].text, msgs[0].important ? 255 : 230,
-                  msgs[0].important ? 200 : 230, msgs[0].important ? 80 : 230);
+        const uint8_t mr = msgs[0].important ? 255 : 230, mg = msgs[0].important ? 200 : 230, mb = msgs[0].important ? 80 : 230;
+        const int full = fb::textWidth(msgs[0].text, fb::FONT_BOLD) + 10;
+        if (full <= TW) {
+            fb::darken(s, 0, TOP_H - 34, full, 17);
+            fb::textB(s, 5, TOP_H - 33, msgs[0].text, mr, mg, mb);
+        } else {
+            // too wide for this screen: two lines, broken at a space, never cut off
+            char a[128], b[128];
+            const char *t = msgs[0].text;
+            int cut = 0;
+            for (int i = (int)strlen(t) - 1; i > 0; --i) {
+                if (t[i] != ' ') continue;
+                snprintf(a, sizeof a, "%.*s", i, t);
+                if (fb::textWidth(a, fb::FONT_BOLD) + 10 <= TW) { cut = i; break; }
+            }
+            if (cut <= 0) cut = (int)strlen(t) / 2;
+            snprintf(a, sizeof a, "%.*s", cut, t);
+            snprintf(b, sizeof b, "%s", msgs[0].text + cut + (msgs[0].text[cut] == ' ' ? 1 : 0));
+            fb::darken(s, 0, TOP_H - 51, TW, 34);
+            fb::textB(s, 5, TOP_H - 50, a, mr, mg, mb);
+            fb::textB(s, 5, TOP_H - 33, b, mr, mg, mb);
+        }
     }
     const ToolDef &t = kTools[toolIdx];
     if (now - lastDragAt < 2500 && lastDragCost > 0) {
@@ -993,10 +1015,12 @@ void App::drawTopHud(Screen &s) {
         snprintf(line, sizeof(line), "%s: $%s so far", t.name, num);
     } else if (t.cost > 0) {
         snprintf(line, sizeof(line), "%s $%d%s  %s", t.name, t.cost, t.size == 1 ? "/tile" : "", t.desc);
+        if (fb::textWidth(line) + 10 > TW) snprintf(line, sizeof(line), "%s $%d%s", t.name, t.cost, t.size == 1 ? "/tile" : "");
     } else {
         snprintf(line, sizeof(line), "%s  %s", t.name, t.desc);
+        if (fb::textWidth(line) + 10 > TW) snprintf(line, sizeof(line), "%s", t.name);
     }
-    fb::darken(s, 0, TOP_H - 17, TOP_W, 17);
+    fb::darken(s, 0, TOP_H - 17, TW, 17);
     fb::text(s, 5, TOP_H - 15, line, 255, 255, 170);
 
     if (mode == MODE_QUERY && query.valid) drawQuery(s);
@@ -1004,7 +1028,7 @@ void App::drawTopHud(Screen &s) {
 
 void App::drawQuery(Screen &s) {
     char line[64];
-    const int x0 = 50, y0 = 36, w = 300, h = 124;
+    const int w = 300, h = 124, x0 = (s.w - w) / 2, y0 = 36;
     fb::fillRect(s, x0, y0, w, h, 20, 20, 30);
     fb::rectOutline(s, x0, y0, w, h, 200, 200, 200);
     const int cat = (query.category >= 0 && query.category < 27) ? query.category : 0;
@@ -1319,6 +1343,16 @@ void App::render(float slider) {
         return;
     }
     overlayMaxCached = (overlay == OV_NONE) ? 255 : overlayMax();
+    if (platform::swapped()) {
+        // swapped: the dashboard goes on the touch screen, so it is drawn at 320 wide (full-size
+        // text) rather than drawn at 400 and squeezed; no stereo there
+        static uint8_t dashBuf[BOT_W * BOT_H * 3];
+        Screen dash = { BOT_W, BOT_H, dashBuf };
+        drawCity(dash, 0, 0.f);
+        drawBottom();
+        platform::present(dash, nullptr, bottom);
+        return;
+    }
     drawCity(top, slider > 0.f ? -1 : 0, slider);
     if (slider > 0.f) drawCity(topR, 1, slider);
     drawBottom();

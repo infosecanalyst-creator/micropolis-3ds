@@ -111,7 +111,7 @@ private:
     int bts() const { return zoomOut ? 8 : 16; }
     int mapCols() const { return BOT_W / bts(); }
     int mapRows() const { return (MAP_H + bts() - 1) / bts(); }
-    void topOrigin(int &ox, int &oy) const;
+    void topOrigin(int &ox, int &oy, int w = TOP_W) const;
     int topTs() const;
     void updateTopCamera();
     float topCx = -1.f, topCy = -1.f;   // top close-up centre, world px at 16/tile

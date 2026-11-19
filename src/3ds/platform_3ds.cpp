@@ -143,6 +143,8 @@ static void blit(gfxScreen_t screen, gfx3dSide_t side, const Screen &s) {
     }
 }
 
+bool swapped() { return g_swapped; }
+
 void present(const Screen &top0, const Screen *topRight0, const Screen &bottom0) {
     static uint8_t swTop[400 * 240 * 3], swBot[320 * 240 * 3];
     static Screen swT{400, 240, swTop}, swB{320, 240, swBot};
@@ -170,6 +172,23 @@ void present(const Screen &top0, const Screen *topRight0, const Screen &bottom0)
             for (int x = 0; x < 320; ++x)
                 memcpy(swBot + ((y + 24) * 320 + x) * 3, top0.rgb + ((y * 5 / 4) * 400 + (x * 5 / 4)) * 3, 3);
         topP = &swT; botP = &swB; trP = nullptr;
+    } else if (g_swapped && top0.w == 320 && top0.h == 240 && bottom0.w == 320 && bottom0.h == 240) {
+        // the app drew the dashboard at 320 for the touch screen (full-size text): shown 1:1
+        for (int y = 0; y < 240; ++y)
+            for (int x = 0; x < 400; ++x)
+                memcpy(swTop + (y * 400 + x) * 3, bottom0.rgb + (y * 320 + x * 4 / 5) * 3, 3);
+        {
+            const int px = g_ptrX * 5 / 4, py = g_ptrY;
+            for (int r = 0; r < 12; ++r)
+                for (int c = 0; c <= r / 2 + 1 && c < 7; ++c) {
+                    const int x = px + c, y = py + r;
+                    if (x < 0 || x >= 400 || y < 0 || y >= 240) continue;
+                    const bool edge = c == 0 || c == r / 2 + 1 || r == 11;
+                    uint8_t *q = swTop + (y * 400 + x) * 3;
+                    q[0] = q[1] = q[2] = edge ? 0 : 255;
+                }
+        }
+        topP = &swT; botP = &top0; trP = nullptr;
     }
     const Screen &top = *topP, &bottom = *botP;
     const Screen *topRight = trP;

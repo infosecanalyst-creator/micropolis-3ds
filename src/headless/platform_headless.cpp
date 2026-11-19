@@ -22,6 +22,7 @@ bool init() { return true; }
 void shutdown() {}
 bool running() { return true; }
 void poll(Input &) {}
+bool swapped() { return false; }
 bool leftyOn() { return false; }
 void setLefty(bool) {}
 uint64_t millis() { return g_fakeMs; }

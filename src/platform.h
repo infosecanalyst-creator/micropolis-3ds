@@ -34,6 +34,7 @@ bool init();
 void shutdown();
 bool running();                 // false when the user closes the app
 void poll(Input &in);
+bool swapped();                 // ZL: the game is on the top screen, the dashboard on the touch screen
 bool leftyOn();                 // left-handed play: the D-pad and A/B/X/Y swap jobs
 void setLefty(bool on);         // remembered between runs
 // topRight may be null (no stereo); otherwise it is the right-eye image.
