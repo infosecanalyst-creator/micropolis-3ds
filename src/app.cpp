@@ -978,6 +978,19 @@ void App::drawTopHud(Screen &s) {
         const int w = fb::textWidth(kOverlayNames[overlay]) + 6;
         fb::darken(s, TW - w, 75, w, 14);
         fb::text(s, TW - w + 3, 76, kOverlayNames[overlay], 200, 220, 255);
+        // UI rule 20: a key with words, so the colours are never the only signal
+        const char *lo = overlay == OV_POWER ? "off" : overlay == OV_GROWTH ? "fall" : "low";
+        const char *hi = overlay == OV_POWER ? "on" : overlay == OV_GROWTH ? "rise" : "high";
+        const int bw = 32, lw = fb::textWidth(lo), hw = fb::textWidth(hi);
+        const int kw = lw + bw + hw + 12, kx = TW - kw;
+        fb::darken(s, kx, 90, kw, 14);
+        fb::text(s, kx + 3, 91, lo, 200, 220, 255);
+        for (int i = 0; i < bw; i++) {
+            uint8_t rgb[3];
+            overlayColour(i * 255 / (bw - 1), rgb);
+            fb::fillRect(s, kx + 6 + lw + i, 93, 1, 8, rgb[0], rgb[1], rgb[2]);
+        }
+        fb::text(s, kx + 9 + lw + bw, 91, hi, 200, 220, 255);
     }
 
     // foot: newest message (8 s), then the tool line
