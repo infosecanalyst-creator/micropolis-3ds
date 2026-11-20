@@ -19,10 +19,20 @@ void __system_allocateHeaps(void) {
     if (R_FAILED(svcGetResourceLimit(&reslimit, CUR_PROCESS_HANDLE))) svcBreak(USERBREAK_PANIC);
     s64 maxCommit = 0, currentCommit = 0;
     ResourceLimitType type = RESLIMIT_COMMIT;
+    // MP-07: Micropolis needs far less than 64 MB, so don't sit out the full 3 s whenever less
+    // than that is free (always the case on an Old 3DS). Stop as soon as 64 MB is free, or once
+    // at least 40 MB is free and the amount has not changed for 300 ms (the previous app is done
+    // releasing). Still gives up after 3 s and uses whatever there is.
+    s64 lastFree = -1;
+    int stable = 0;
     for (int tries = 0; tries < 300; tries++) {
         svcGetResourceLimitLimitValues(&maxCommit, reslimit, &type, 1);
         svcGetResourceLimitCurrentValues(&currentCommit, reslimit, &type, 1);
-        if (maxCommit - currentCommit >= (64ll << 20)) break;
+        const s64 freeNow = maxCommit - currentCommit;
+        if (freeNow >= (64ll << 20)) break;
+        stable = freeNow == lastFree ? stable + 1 : 0;
+        lastFree = freeNow;
+        if (freeNow >= (40ll << 20) && stable >= 30) break;
         svcSleepThread(10000000LL);
     }
     svcCloseHandle(reslimit);

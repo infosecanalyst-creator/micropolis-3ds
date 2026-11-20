@@ -244,6 +244,12 @@ int main(int argc, char **argv) {
             platform::poll(in);
             app->frame(in);
         }
+        // MP-01: HOME -> Close (aptMainLoop false): the same save EXIT does, on the main thread,
+        // before the App and the graphics are torn down. No time to ask, so a failure is only logged.
+        if (!app->quitRequested) {
+            const bool ok = app->saveCity();
+            platform::log("HOME close: city save %s", ok ? "ok" : "FAILED");
+        }
         delete app;
     }
     platform::shutdown();

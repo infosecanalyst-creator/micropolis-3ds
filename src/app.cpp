@@ -215,6 +215,7 @@ bool App::saveCity() {
     snprintf(path, sizeof(path), "%s/autosave.cty", platform::saveDir());
     saveFailed = false;
     sim.saveCityAs(path);   // reports through didSaveCity / didntSaveCity
+    playMsSinceSave = 0;    // MP-01: any save restarts the autosave clock
     return !saveFailed;
 }
 
@@ -700,8 +701,19 @@ void App::frame(const Input &in) {
     case MODE_QUERY: if ((in.down & (BTN_A | BTN_B)) || in.touchDown) { mode = MODE_PLAY; query.valid = false; tstate = T_DONE; } break;
     }
 
-    if (mode == MODE_PLAY || mode == MODE_QUERY)
+    if (mode == MODE_PLAY || mode == MODE_QUERY) {
         tickSim(now);
+        // MP-01: count play time; a gap over 100 ms (HOME Menu, sleep, a slow save) counts as 100 ms
+        const uint64_t dt = lastFrameMs && now > lastFrameMs ? now - lastFrameMs : 0;
+        playMsSinceSave += dt > 100 ? 100 : dt;
+        if (playMsSinceSave >= kAutosaveMs) {
+            const bool ok = saveCity();   // between sim ticks, on the main thread: the same save as Menu > Save city
+            platform::log("timed autosave %s", ok ? "ok" : "FAILED");
+            if (ok) pushMessage("City autosaved.", false);
+            else pushMessage("Save failed - is the SD card full?", true);
+        }
+    }
+    lastFrameMs = now;
     updateTopCamera();
 
     render(in.slider);
