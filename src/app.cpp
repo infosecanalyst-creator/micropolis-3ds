@@ -200,10 +200,22 @@ void App::onCallback(const char *name, const char *params, va_list args) {
         pushMessage("You won the scenario!", true);
     } else if (!strcmp(name, "loseGame")) {
         pushMessage("You lost the scenario.", true);
+    } else if (!strcmp(name, "didntSaveCity")) {
+        saveFailed = true;
+    } else if (!strcmp(name, "didSaveCity")) {
+        saveFailed = false;
     } else if (!strcmp(name, "didLoadScenario")) {
         if (sim.scenario > 0 && sim.scenario <= 8)
             pushMessage(kScenarioNames[sim.scenario], true);
     }
+}
+
+bool App::saveCity() {
+    char path[256];
+    snprintf(path, sizeof(path), "%s/autosave.cty", platform::saveDir());
+    saveFailed = false;
+    sim.saveCityAs(path);   // reports through didSaveCity / didntSaveCity
+    return !saveFailed;
 }
 
 void App::pushMessage(const char *text, bool important) {
@@ -562,7 +574,7 @@ void App::handleMenuInput(const Input &in) {
     // START menu, house style. Page 0: main list (2 x 4, column-major), page 1: new city and
     // scenarios (2 x 5), page 2: exit question (YES / NO, NO chosen).
     const int rows = pmPage == 0 ? 4 : pmPage == 1 ? 5 : 1;
-    const int items = pmPage == 0 ? 7 : pmPage == 1 ? 10 : 2;
+    const int items = pmPage == 0 ? 7 : pmPage == 1 ? 10 : 2;   // pages 2 and 3: YES / NO
     if (in.repeat & BTN_UP) menuSel = (menuSel + items - 1) % items;
     if (in.repeat & BTN_DOWN) menuSel = (menuSel + 1) % items;
     if (in.repeat & (BTN_LEFT | BTN_RIGHT)) {
@@ -570,24 +582,28 @@ void App::handleMenuInput(const Input &in) {
         if (n >= 0 && n < items) menuSel = n;
     }
     if (in.down & (BTN_B | BTN_START)) {
-        if (pmPage == 0) { mode = MODE_PLAY; tstate = T_DONE; }
+        if (pmPage == 0 || pmPage == 3) { mode = MODE_PLAY; tstate = T_DONE; pmPage = 0; }   // save failed: back to the city
         else { menuSel = pmPage == 1 ? 4 : 6; pmPage = 0; }
         return;
     }
     bool pick = (in.down & BTN_A) != 0;
     if (in.touchDown) {
-        const int i = menuHit(in.touchX, in.touchY, rows, pmPage == 2 ? 120 : 32);
+        const int i = menuHit(in.touchX, in.touchY, rows, pmPage >= 2 ? 120 : 32);
         if (i >= 0 && i < items) { menuSel = i; pick = true; }
     }
     if (!pick) return;
     tstate = T_DONE;
     if (pmPage == 2) {
-        if (menuSel == 0) {
-            char path[256];   // never lose progress: the city is saved before the game ends
-            snprintf(path, sizeof(path), "%s/autosave.cty", platform::saveDir());
-            sim.saveCityAs(path);
-            quitRequested = true;
+        if (menuSel == 0) {   // never lose progress: the city is saved before the game ends
+            if (saveCity()) quitRequested = true;
+            else { pmPage = 3; menuSel = 1; return; }   // MP-02: it failed, ask (focus on NO)
         }
+        pmPage = 0; menuSel = 6;
+        return;
+    }
+    if (pmPage == 3) {
+        if (menuSel == 0) quitRequested = true;          // EXIT ANYWAY
+        else { mode = MODE_PLAY; tstate = T_DONE; }       // NO: back to the city
         pmPage = 0; menuSel = 6;
         return;
     }
@@ -601,10 +617,8 @@ void App::handleMenuInput(const Input &in) {
     case 0: mode = MODE_PLAY; break;
     case 1: g_manual.open(); mode = MODE_HELP; break;
     case 2: {
-        char path[256];
-        snprintf(path, sizeof(path), "%s/autosave.cty", platform::saveDir());
-        sim.saveCityAs(path);
-        pushMessage("City saved.", false);
+        if (saveCity()) pushMessage("City saved.", false);
+        else pushMessage("Save failed - is the SD card full?", true);
         mode = MODE_PLAY;
         break;
     }
@@ -1214,6 +1228,15 @@ void App::drawBudget(Screen &s) {
 }
 
 void App::drawMenu(Screen &s) {
+    if (pmPage == 3) {
+        houseFrame(s, "SAVE FAILED", "A Select   B Back");
+        const char *q = "The city could not be saved.", *q2 = "Is the SD card full? Exit anyway?";
+        fb::textB(s, (BOT_W - fb::textWidth(q, fb::FONT_BOLD)) / 2, 64, q, 235, 240, 250);
+        fb::text(s, (BOT_W - fb::textWidth(q2)) / 2, 86, q2, 170, 185, 225);
+        menuButton(s, 0, 1, 120, "EXIT ANYWAY", menuSel == 0, 0, 0, 0);
+        menuButton(s, 1, 1, 120, "NO", menuSel == 1, 0, 0, 0);
+        return;
+    }
     if (pmPage == 2) {
         houseFrame(s, "EXIT GAME", "A Select   B Back");
         const char *q = "Exit Micropolis?", *q2 = "Your city is saved first.";

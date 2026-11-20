@@ -64,7 +64,9 @@ private:
     bool hasAutosave = false;              // entry 0 is <saveDir>/autosave.cty
     void scanCities();
     int menuSel = 0;
-    int pmPage = 0;   // START menu page: 0 main, 1 new city / scenarios, 2 exit question
+    int pmPage = 0;   // START menu page: 0 main, 1 new city / scenarios, 2 exit question, 3 save failed
+    bool saveFailed = false;   // set by the engine's didntSaveCity callback (MP-02)
+    bool saveCity();           // autosave.cty; false when it could not be written
     int budgetSel = 0;
     // Overlay / minimap modes
     enum Overlay { OV_NONE, OV_POWER, OV_POLLUTION, OV_CRIME, OV_LANDVALUE, OV_TRAFFIC,

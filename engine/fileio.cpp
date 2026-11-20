@@ -1,3 +1,5 @@
+#include <string>
+#include <cstdio>
 /* fileio.cpp
  *
  * Micropolis, Unix Version.  This game was released for the Unix platform
@@ -342,8 +344,11 @@ bool Micropolis::saveFile(const char *filename)
     long n;
     FILE *f;
 
-    if ((f = fopen(filename, "wb")) == NULL) {
-        /// @todo Report error saving file.
+    // MP-03: write a temporary file and move it over the city only when every byte
+    // reached the card, so a power cut or full SD card never leaves a half-written
+    // city (autosave.cty is also what loads at start-up).
+    std::string tmpName = std::string(filename) + ".tmp";
+    if ((f = fopen(tmpName.c_str(), "wb")) == NULL) {
         return false;
     }
 
@@ -390,7 +395,10 @@ bool Micropolis::saveFile(const char *filename)
         save_short(miscHist, MISC_HISTORY_LENGTH / 2, f) &&
         save_short(((short *)&map[0][0]), WORLD_W * WORLD_H, f);
 
-    fclose(f);
+    if (ferror(f)) result = false;
+    if (fclose(f) != 0) result = false;
+    if (result && rename(tmpName.c_str(), filename) != 0) result = false;
+    if (!result) remove(tmpName.c_str());
 
     return result;
 }
