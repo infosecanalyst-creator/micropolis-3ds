@@ -22,6 +22,7 @@ public:
 
     Screen top, topR, bottom;
     bool quitRequested = false;
+    bool saveCity();           // autosave.cty; false when it could not be written (public: main() saves on HOME -> Close)
 
 private:
     Micropolis sim;
@@ -66,7 +67,6 @@ private:
     int menuSel = 0;
     int pmPage = 0;   // START menu page: 0 main, 1 new city / scenarios, 2 exit question, 3 save failed
     bool saveFailed = false;   // set by the engine's didntSaveCity callback (MP-02)
-    bool saveCity();           // autosave.cty; false when it could not be written
     // MP-01: timed autosave. Counts only time spent in the city (not menus, not while the
     // 3DS is in the HOME Menu or asleep); every kAutosaveMs of play the city goes to autosave.cty.
     static const uint64_t kAutosaveMs = 5ull * 60 * 1000;
