@@ -397,7 +397,17 @@ bool Micropolis::saveFile(const char *filename)
 
     if (ferror(f)) result = false;
     if (fclose(f) != 0) result = false;
-    if (result && rename(tmpName.c_str(), filename) != 0) result = false;
+    if (result && rename(tmpName.c_str(), filename) != 0) {
+        // The 3DS SD card refuses to rename over an existing file: keep the old city
+        // as .bak, move the new one in, and put the old one back if that fails.
+        std::string bakName = std::string(filename) + ".bak";
+        remove(bakName.c_str());
+        const bool had = rename(filename, bakName.c_str()) == 0;
+        if (rename(tmpName.c_str(), filename) != 0) {
+            result = false;
+            if (had) rename(bakName.c_str(), filename);
+        }
+    }
     if (!result) remove(tmpName.c_str());
 
     return result;
