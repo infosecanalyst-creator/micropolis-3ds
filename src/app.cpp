@@ -242,9 +242,19 @@ void App::pushMessage(const char *text, bool important) {
 void App::tickSim(uint64_t now) {
     // ~16 sim ticks a second, like the original 60 ms timer; the engine
     // throttles itself per speed setting inside simFrame().
+    // MP-06: the ticks follow the clock, not the frame rate. A slow frame (below 16 fps the
+    // old one-tick-per-frame rule slowed the city) runs the ticks it owes, at most 3 per frame;
+    // after a long gap (HOME Menu, a save, a menu) the city does not fast-forward.
     if (now - lastTickMs >= 62) {
-        lastTickMs = now;
-        sim.simTick();
+        if (now - lastTickMs > 400) lastTickMs = now - 62;
+        int n = 0;
+        while (now - lastTickMs >= 62 && n < 3) {
+            lastTickMs += 62;
+            sim.simTick();
+            platform::noteSimTick();
+            ++n;
+        }
+        if (now - lastTickMs >= 62) lastTickMs = now;   // still behind: drop the rest
         if (sim.doAnimation && !sim.tilesAnimated)
             sim.animateTiles();
     }

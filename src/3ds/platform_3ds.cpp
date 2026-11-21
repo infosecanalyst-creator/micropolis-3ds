@@ -53,6 +53,7 @@ static void saveSwap() {
     if (g_swapped) { if (FILE *f = fopen(kSwapFile, "w")) fclose(f); }
     else remove(kSwapFile);
 }
+static void frameStart();
 static int g_ptrX = 160, g_ptrY = 120;   // swapped: the touchpad pointer, in touch-screen picture coordinates
 
 // Left-handed play (toggled on the manual's touch screen): Y<->D-up, A<->D-right, B<->D-down, X<->D-left.
@@ -138,6 +139,7 @@ void poll(Input &in) {
     in.cpadX = cp.dx;
     in.cpadY = cp.dy;
     in.slider = osGet3DSliderState();
+    frameStart();                          // debug.txt frame-time line: the frame's work starts here
 }
 
 // Copy a landscape RGB buffer into the 3DS's portrait-rotated BGR framebuffer.
@@ -156,6 +158,39 @@ static void blit(gfxScreen_t screen, gfx3dSide_t side, const Screen &s) {
 }
 
 bool swapped() { loadSwap(); return g_swapped; }
+
+// ---- frame-time line (debug.txt only) -----------------------------------------------------
+// With sdmc:/3ds/micropolis/debug.txt present at start-up, log.txt gets one line every 300
+// frames: frames per second, the average and longest frame (work before the vertical-blank
+// wait) and sim ticks per second (about 16 when the sim keeps its speed).
+static int g_debug = -1;
+static uint64_t g_frameStart = 0, g_statStart = 0;
+static unsigned g_statFrames = 0, g_statTicks = 0;
+static double g_statWork = 0, g_statMax = 0;
+static bool debugOn() {
+    if (g_debug < 0) { struct stat sb; g_debug = stat("sdmc:/3ds/micropolis/debug.txt", &sb) == 0; }
+    return g_debug != 0;
+}
+void noteSimTick() { ++g_statTicks; }
+static void frameStat() {
+    if (!debugOn()) return;
+    const uint64_t t = svcGetSystemTick();
+    const double tpm = SYSCLOCK_ARM11 / 1000.0;
+    if (g_frameStart) {
+        const double ms = (double)(t - g_frameStart) / tpm;
+        g_statWork += ms;
+        if (ms > g_statMax) g_statMax = ms;
+        ++g_statFrames;
+    }
+    if (!g_statStart) g_statStart = t;
+    if (g_statFrames >= 300) {
+        const double secs = (double)(t - g_statStart) / (tpm * 1000.0);
+        log("frame: %.1f fps, work avg %.1f ms, max %.1f ms, sim %.1f ticks/s",
+            g_statFrames / secs, g_statWork / g_statFrames, g_statMax, g_statTicks / secs);
+        g_statFrames = g_statTicks = 0; g_statWork = g_statMax = 0; g_statStart = svcGetSystemTick();
+    }
+}
+static void frameStart() { if (debugOn()) g_frameStart = svcGetSystemTick(); }
 
 void present(const Screen &top0, const Screen *topRight0, const Screen &bottom0) {
     static uint8_t swTop[400 * 240 * 3], swBot[320 * 240 * 3];
@@ -204,10 +239,16 @@ void present(const Screen &top0, const Screen *topRight0, const Screen &bottom0)
     }
     const Screen &top = *topP, &bottom = *botP;
     const Screen *topRight = trP;
+    // MP-05: with no right-eye picture (3D slider at 0, swapped, manual) both eyes would be the
+    // same image, so the top screen leaves 3D mode and the right-eye copy is not made at all.
+    // With a right-eye picture it goes back to 3D mode and both eyes are drawn as before.
+    const bool want3D = topRight != nullptr;
+    if (want3D != gfxIs3D()) gfxSet3D(want3D);
     blit(GFX_TOP, GFX_LEFT, top);
-    blit(GFX_TOP, GFX_RIGHT, topRight ? *topRight : top);
+    if (want3D) blit(GFX_TOP, GFX_RIGHT, *topRight);
     blit(GFX_BOTTOM, GFX_LEFT, bottom);
     gfxFlushBuffers();
+    frameStat();
     gfxSwapBuffers();
     gspWaitForVBlank();
 }

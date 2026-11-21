@@ -44,4 +44,5 @@ void sleepMs(unsigned ms);
 const char *resDir();           // where res/ (scenarios) lives
 const char *saveDir();          // writable city save directory
 void log(const char *fmt, ...);
+void noteSimTick();             // one sim tick ran (debug.txt frame-time line)
 }

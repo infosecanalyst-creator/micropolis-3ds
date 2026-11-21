@@ -27,6 +27,7 @@ bool leftyOn() { return false; }
 void setLefty(bool) {}
 uint64_t millis() { return g_fakeMs; }
 void sleepMs(unsigned) {}
+void noteSimTick() {}
 const char *resDir() { return g_res; }
 const char *saveDir() { return g_out; }
 void log(const char *fmt, ...) { va_list a; va_start(a, fmt); vfprintf(stderr, fmt, a); va_end(a); fputc('\n', stderr); }
