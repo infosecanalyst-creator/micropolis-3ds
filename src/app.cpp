@@ -1329,7 +1329,7 @@ void App::handleHelpInput(const Input &in) {
     mi.has_hold = true; mi.touch_held = in.touch; mi.hx = in.touchX; mi.hy = in.touchY;   // drag to scroll
     mi.cpad_y = in.cpadY;
     g_manual.set_toggle(platform::leftyOn() ? "Left hand: on" : "Left hand: off");
-    g_manual.set_footer(platform::leftyOn() ? "Stick: scroll   A/B/X/Y: section   D-Down: close" : "");
+    g_manual.set_footer(platform::leftyOn() ? "Sticks: scroll   A/B/X/Y, L / R: section   D-Down / START: close" : "");
     const bool open = g_manual.update(mi);
     if (g_manual.take_toggle()) platform::setLefty(!platform::leftyOn());
     if (!open) mode = MODE_PLAY;
