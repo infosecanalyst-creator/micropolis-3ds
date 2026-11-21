@@ -10,6 +10,7 @@
 #include "fb.h"
 #include "manual3ds.h"
 #include "manual_text.h"
+#include "../engine/text.h"   // MessageNumber (MP-09)
 
 static manual3ds::Manual g_manual;   // Start > How to play
 #include "../assets/icons_data.h"
@@ -176,10 +177,16 @@ void App::onCallback(const char *name, const char *params, va_list args) {
         if (!strcmp(what, "message") && !strcmp(params, "sdddbb")) {
             const int num = va_arg(args, int);
             const int mx = va_arg(args, int), my = va_arg(args, int);
-            va_arg(args, int);                       // picture
-            const int important = va_arg(args, int);
+            const int picture = va_arg(args, int);
+            const int flagged = va_arg(args, int);
+            // MP-09: the engine flags only some disasters "important" (monster, tornado, meltdown);
+            // fire, flood, earthquake and the crashes come with just the picture flag, or with
+            // neither (a fire that starts by itself). All of them count here, so they also show
+            // on the touch-screen map.
+            const bool important = flagged != 0 || picture != 0 || num == MESSAGE_FIRE_REPORTED
+                                   || num == MESSAGE_FLOODING_REPORTED || num == MESSAGE_EXPLOSION_REPORTED;
             if (num > 0 && num < kMessageCount)
-                pushMessage(kMessages[num], important != 0);
+                pushMessage(kMessages[num], important);
             if (mx >= 0 && my >= 0 && mx < WORLD_W && my < WORLD_H) {
                 alertX = mx; alertY = my; alertAt = platform::millis();
             }
