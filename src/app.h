@@ -22,6 +22,7 @@ public:
 
     Screen top, topR, bottom;
     bool quitRequested = false;
+    void pushMessage(const char *text, bool important);   // public: main() reports a boot-time load fallback (MP-04)
     bool saveCity();           // autosave.cty; false when it could not be written (public: main() saves on HOME -> Close)
 
 private:
@@ -94,7 +95,6 @@ private:
     // ---- callbacks from the engine
     static void callbackThunk(Micropolis *m, void *data, const char *name, const char *params, va_list args);
     void onCallback(const char *name, const char *params, va_list args);
-    void pushMessage(const char *text, bool important);
 
     // ---- update
     void tickSim(uint64_t now);
