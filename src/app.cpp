@@ -13,6 +13,9 @@
 
 static manual3ds::Manual g_manual;   // Start > How to play
 #include "../assets/icons_data.h"
+#ifndef PORT_VERSION
+#define PORT_VERSION "unknown"
+#endif
 
 // ---------------------------------------------------------------------------
 // Static tables
@@ -1264,6 +1267,10 @@ void App::drawMenu(Screen &s) {
         return;
     }
     houseFrame(s, "MENU", "A Select   B Back   ZL Swap");
+    {   // port version (git describe of micropolis-3ds), right of the title
+        const char *v = "Build " PORT_VERSION;
+        fb::text(s, BOT_W - 8 - fb::textWidth(v), 7, v, 170, 185, 225);
+    }
     for (int i = 0; i < 7; ++i) menuButton(s, i, 4, 32, kPmMain[i], i == menuSel, 0, 0, 0);
 }
 

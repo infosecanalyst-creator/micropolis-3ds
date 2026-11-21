@@ -25,9 +25,12 @@ ICON        := 3ds/icon.png
 
 ARCH    := -march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft
 
+# Port version in the START menu header: git describe of this repo (exported for the build/ sub-make)
+PORT_VERSION ?= $(shell git -c safe.directory='*' -C "$(CURDIR)" describe --always --dirty 2>/dev/null || echo unknown)
+export PORT_VERSION
 CFLAGS  := -g -Wall -O2 -mword-relocations -ffunction-sections -fdata-sections \
-           $(ARCH) $(INCLUDE) -D__3DS__ -DARM11
-CXXFLAGS := $(CFLAGS) -fno-rtti -fno-exceptions -std=gnu++11 -w
+           $(ARCH) $(INCLUDE) -D__3DS__ -DARM11 -DPORT_VERSION=\"$(PORT_VERSION)\"
+CXXFLAGS := $(CFLAGS) -fno-rtti -fno-exceptions -std=gnu++11
 ASFLAGS := -g $(ARCH)
 LDFLAGS  = -specs=3dsx.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map) -Wl,--gc-sections
 # Hardware test hooks (3ds-test-suite hwtest/selftest): inactive unless the test agent

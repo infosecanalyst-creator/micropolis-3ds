@@ -25,6 +25,9 @@ jobs:
         run: |
           mkdir -p out
           cp micropolis.3dsx build.log out/ 2>/dev/null || true
+          # symbols for reading crash addresses: gzipped ELF (addr2line) and a demangled nm map
+          gzip -9c micropolis.elf > out/micropolis.elf.gz 2>/dev/null || true
+          "$DEVKITARM/bin/arm-none-eabi-nm" -C -n micropolis.elf 2>/dev/null | gzip -9 > out/micropolis.sym.gz || true
           echo "$GITHUB_SHA" > out/SOURCE_COMMIT
       - name: Publish to builds branch
         if: success()   # never replace the last good build with a failed one; failed-build logs stay in the Actions run
