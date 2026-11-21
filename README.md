@@ -80,8 +80,8 @@ make            # -> micropolis.3dsx with romfs (scenarios + sample cities)
 make cia        # needs makerom + bannertool
 ```
 
-Copy `micropolis.3dsx` to `sdmc:/3ds/micropolis/` and launch from the
-Homebrew Launcher. No external data needed — everything is in romfs.
+Copy `micropolis.3dsx` directly to `sdmc:/3ds/` (as `sdmc:/3ds/micropolis.3dsx`; saves
+and cities stay in `sdmc:/3ds/micropolis/`) and launch from the Homebrew Launcher. No external data needed — everything is in romfs.
 
 ## Files
 
