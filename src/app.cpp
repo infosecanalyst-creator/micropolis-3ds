@@ -578,7 +578,7 @@ static void houseFrame(Screen &s, const char *title, const char *hint) {
     fb::textB(s, 8, 5, title, 255, 204, 64);
     fb::fillRect(s, 0, 224, BOT_W, 16, 40, 56, 120);
     fb::fillRect(s, 0, 224, BOT_W, 1, 120, 150, 230);
-    fb::text(s, (BOT_W - fb::textWidth(hint)) / 2, 228, hint, 255, 204, 64);
+    fb::text(s, (BOT_W - fb::textWidth(hint)) / 2, 226, hint, 255, 204, 64);
 }
 static const char *const kPmMain[7] = { "RESUME", "MANUAL", "SAVE CITY", "LOAD CITY", "NEW CITY...", "DISASTERS...", "EXIT GAME" };
 static const char *const kPmCities[10] = { "New city", "Dullsville 1900", "San Francisco 1906", "Hamburg 1944",
