@@ -41,8 +41,8 @@ Bulldozer, Road, Rail, Power, Residential, Commercial, Industrial, and a last sl
 | X | budget |
 | Select | speed: pause, slow, medium, fast |
 | Start | menu |
-| ZR | next map overlay |
-| ZL | swap the screens (any time) |
+| ZR | cycle the map overlays |
+| ZL | swap the screens: the city fills the top screen and the touch screen becomes a touchpad (slide moves the pointer, tap taps there) |
 
 # Your first city
 Start with New city or Dullsville. The clock is paused: nothing happens until you press Select or tap the speed button.
