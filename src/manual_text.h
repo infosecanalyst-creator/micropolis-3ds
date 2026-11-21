@@ -43,8 +43,8 @@ Bulldozer, Road, Rail, Power, Residential, Commercial, Industrial, and a last sl
 | X | budget |
 | Select | speed: pause, slow, medium, fast |
 | Start | menu |
-| ZR | cycle the map overlays |
-| ZL | swap the screens: the city fills the top screen and the touch screen becomes a touchpad (slide moves the pointer, tap taps there) |
+| ZR | next map overlay |
+| ZL | swap the screens (any time) |
 
 # Your first city
 Start with New city or Dullsville. The clock is paused: nothing happens until you press Select or tap the speed button.
@@ -154,8 +154,14 @@ Each starts a real city with a crisis and a goal, judged after a time limit.
 - Check the Power overlay after every build.
 
 # Files, saving and 3D
-- Menu > Save city writes sdmc:/3ds/micropolis/autosave.cty, which loads automatically next time.
+- The Start menu has RESUME, MANUAL, SAVE CITY, LOAD CITY, NEW CITY..., DISASTERS... and EXIT GAME.
+- Menu > Save city writes sdmc:/3ds/micropolis/autosave.cty, which loads automatically next time. Every save is written to a temporary file first and the previous save is kept as autosave.cty.bak, so a failed save never costs you the old city. If a save fails the screen says "Save failed - is the SD card full?".
+- The city also autosaves every 5 minutes of play (time spent in menus, in the HOME Menu or asleep does not count) and says "City autosaved." when it did.
+- EXIT GAME asks "Exit Micropolis?" and saves the city first. If that save fails it says so and asks EXIT ANYWAY or not; it never quits after a failed save without asking. Closing the game from the HOME menu (HOME, then Close) saves the city the same way (nobody can be asked then, so a failure is only logged).
+- If autosave.cty cannot be read at start (a card error, a half-written file), the game opens autosave.cty.bak and says "Autosave was unreadable: opened the previous save." If that fails too it starts a new city and says "Saved city unreadable: started a new city." The unreadable file is moved aside, not deleted.
+- Disasters and other important messages also show on the touch map while you build, not only on the top screen.
 - Menu > Load city lists the autosave first, then every .cty in sdmc:/3ds/micropolis/cities/ (the classic 1989 city format, so classic city files work).
 - The 3D slider sets the depth of the top screen: buildings rise with their density, vehicles are nearest, and the cursor sits on whatever it points at.
+- The program is sdmc:/3ds/micropolis.3dsx, directly in /3ds. Cities and settings live in sdmc:/3ds/micropolis/.
 - A manual.txt in sdmc:/3ds/micropolis/ replaces this manual's text.
 )MANUAL";

@@ -1,5 +1,7 @@
 # Micropolis 3DS — the open-source Micropolis city builder on the New 3DS, dual screen + stereoscopic
 
+**Game files:** Micropolis is open source and ships complete with this app, so there is nothing to bring. Install: copy `micropolis.3dsx` directly into `sdmc:/3ds/` (as `sdmc:/3ds/micropolis.3dsx`); cities and settings live in `sdmc:/3ds/micropolis/`.
+
 A native 3DS frontend over the open-source Micropolis engine (GPLv3 —
 21k lines of dependency-free C++, vendored in `engine/` unchanged except one
 header guard, marked as a modification).
