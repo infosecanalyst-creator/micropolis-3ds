@@ -1,0 +1,98 @@
+allocate.cpp
+animate.cpp
+budget.cpp
+connect.cpp
+disasters.cpp
+evaluate.cpp
+fileio.cpp
+generate.cpp
+graph.cpp
+initialize.cpp
+main.cpp
+map.cpp
+message.cpp
+micropolis.cpp
+position.cpp
+power.cpp
+random.cpp
+resource.cpp
+scan.cpp
+simulate.cpp
+sprite.cpp
+stubs.cpp
+/__w/micropolis-3ds/micropolis-3ds/engine/simulate.cpp: In member function 'void Micropolis::collectTax()':
+/__w/micropolis-3ds/micropolis-3ds/engine/simulate.cpp:840:11: warning: variable 'z' set but not used [-Wunused-but-set-variable=]
+  840 |     short z;
+      |           ^
+tool.cpp
+traffic.cpp
+update.cpp
+utilities.cpp
+zone.cpp
+app.cpp
+platform_3ds.cpp
+/__w/micropolis-3ds/micropolis-3ds/src/app.cpp: In member function 'void App::clampCamera()':
+/__w/micropolis-3ds/micropolis-3ds/src/app.cpp:279:5: warning: this 'if' clause does not guard... [-Wmisleading-indentation]
+  279 |     if (curX < 0) curX = 0; if (curX >= WORLD_W) curX = WORLD_W - 1;
+      |     ^~
+/__w/micropolis-3ds/micropolis-3ds/src/app.cpp:279:29: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the 'if'
+  279 |     if (curX < 0) curX = 0; if (curX >= WORLD_W) curX = WORLD_W - 1;
+      |                             ^~
+/__w/micropolis-3ds/micropolis-3ds/src/app.cpp:280:5: warning: this 'if' clause does not guard... [-Wmisleading-indentation]
+  280 |     if (curY < 0) curY = 0; if (curY >= WORLD_H) curY = WORLD_H - 1;
+      |     ^~
+/__w/micropolis-3ds/micropolis-3ds/src/app.cpp:280:29: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the 'if'
+  280 |     if (curY < 0) curY = 0; if (curY >= WORLD_H) curY = WORLD_H - 1;
+      |                             ^~
+/__w/micropolis-3ds/micropolis-3ds/src/app.cpp: In member function 'void App::handleMapTouch(const Input&, uint64_t)':
+/__w/micropolis-3ds/micropolis-3ds/src/app.cpp:480:9: warning: this 'if' clause does not guard... [-Wmisleading-indentation]
+  480 |         if (nx < 0) nx = 0; if (nx >= WORLD_W) nx = WORLD_W - 1;
+      |         ^~
+/__w/micropolis-3ds/micropolis-3ds/src/app.cpp:480:29: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the 'if'
+  480 |         if (nx < 0) nx = 0; if (nx >= WORLD_W) nx = WORLD_W - 1;
+      |                             ^~
+/__w/micropolis-3ds/micropolis-3ds/src/app.cpp:481:9: warning: this 'if' clause does not guard... [-Wmisleading-indentation]
+  481 |         if (ny < 0) ny = 0; if (ny >= WORLD_H) ny = WORLD_H - 1;
+      |         ^~
+/__w/micropolis-3ds/micropolis-3ds/src/app.cpp:481:29: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the 'if'
+  481 |         if (ny < 0) ny = 0; if (ny >= WORLD_H) ny = WORLD_H - 1;
+      |                             ^~
+/__w/micropolis-3ds/micropolis-3ds/src/app.cpp: In member function 'void App::handleBudgetInput(const Input&)':
+/__w/micropolis-3ds/micropolis-3ds/src/app.cpp:685:9: warning: this 'if' clause does not guard... [-Wmisleading-indentation]
+  685 |         if (sim.roadPercent < 0) sim.roadPercent = 0; if (sim.roadPercent > 1) sim.roadPercent = 1;
+      |         ^~
+/__w/micropolis-3ds/micropolis-3ds/src/app.cpp:685:55: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the 'if'
+  685 |         if (sim.roadPercent < 0) sim.roadPercent = 0; if (sim.roadPercent > 1) sim.roadPercent = 1;
+      |                                                       ^~
+/__w/micropolis-3ds/micropolis-3ds/src/app.cpp:686:9: warning: this 'if' clause does not guard... [-Wmisleading-indentation]
+  686 |         if (sim.policePercent < 0) sim.policePercent = 0; if (sim.policePercent > 1) sim.policePercent = 1;
+      |         ^~
+/__w/micropolis-3ds/micropolis-3ds/src/app.cpp:686:59: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the 'if'
+  686 |         if (sim.policePercent < 0) sim.policePercent = 0; if (sim.policePercent > 1) sim.policePercent = 1;
+      |                                                           ^~
+/__w/micropolis-3ds/micropolis-3ds/src/app.cpp:687:9: warning: this 'if' clause does not guard... [-Wmisleading-indentation]
+  687 |         if (sim.firePercent < 0) sim.firePercent = 0; if (sim.firePercent > 1) sim.firePercent = 1;
+      |         ^~
+/__w/micropolis-3ds/micropolis-3ds/src/app.cpp:687:55: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the 'if'
+  687 |         if (sim.firePercent < 0) sim.firePercent = 0; if (sim.firePercent > 1) sim.firePercent = 1;
+      |                                                       ^~
+/__w/micropolis-3ds/micropolis-3ds/src/3ds/platform_3ds.cpp:14:16: warning: '__stacksize__' initialized and declared 'extern'
+   14 | extern "C" u32 __stacksize__ = 1024 * 1024;
+      |                ^~~~~~~~~~~~~
+heap3ds.c
+restartguard.c
+selftest.c
+built ... micropolis.smdh
+In file included from /__w/micropolis-3ds/micropolis-3ds/src/app.cpp:11:
+/__w/micropolis-3ds/micropolis-3ds/src/manual3ds.h: In member function 'void manual3ds::Manual::draw_top(manual3ds::Canvas&)':
+/__w/micropolis-3ds/micropolis-3ds/src/manual3ds.h:391:38: warning: '%d' directive output may be truncated writing between 1 and 8 bytes into a region of size between 4 and 14 [-Wformat-truncation=]
+  391 |         snprintf(pg, sizeof(pg), "%d/%d", m_sec + 1, (int)m_sections.size());
+      |                                      ^~
+/__w/micropolis-3ds/micropolis-3ds/src/manual3ds.h:391:34: note: directive argument in the range [0, 59652323]
+  391 |         snprintf(pg, sizeof(pg), "%d/%d", m_sec + 1, (int)m_sections.size());
+      |                                  ^~~~~~~
+/__w/micropolis-3ds/micropolis-3ds/src/manual3ds.h:391:17: note: 'snprintf' output between 4 and 21 bytes into a destination of size 16
+  391 |         snprintf(pg, sizeof(pg), "%d/%d", m_sec + 1, (int)m_sections.size());
+      |         ~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+linking micropolis.elf
+built ... micropolis.3dsx
