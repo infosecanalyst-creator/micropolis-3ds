@@ -131,6 +131,7 @@ private:
     void drawOverlayTint(Screen &s, const View &v, int dx);
     void drawFootprint(Screen &s, const View &v, int dx, bool thick);
     void drawTopHud(Screen &s);
+    void drawMessageBanner(Screen &s, int TW, int yLine, bool growUp, bool onlyImportant);
     void drawBottom();
     void drawBottomBar(Screen &s);
     void drawToolStrip(Screen &s);

@@ -1,6 +1,6 @@
 # Desktop test build: renders frames to PPM files (no SDL needed).
 CXX ?= g++
-CXXFLAGS ?= -O2 -std=c++11 -w -Iengine -Isrc
+CXXFLAGS ?= -O2 -std=c++11 -Wall -Wno-sign-compare -Wno-unused-variable -Wno-unused-but-set-variable -Wno-unused-function -Wno-parentheses -Wno-misleading-indentation -Wno-reorder -Iengine -Isrc
 ENGINE_SRC := $(wildcard engine/*.cpp)
 APP_SRC := src/app.cpp src/headless/platform_headless.cpp
 OBJ := $(ENGINE_SRC:.cpp=.o) $(APP_SRC:.cpp=.o)

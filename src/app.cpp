@@ -972,6 +972,746 @@ static void fmtThousands(char *out, size_t n, long v) {
 
 static const char *kMonths[12] = { "Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec" };
 
+// The newest city message (8 s) as a banner: one line, or two broken at a space when it is too wide
+// for this screen, never cut off. yLine is the top of a one-line banner; the two-line one grows
+// upward (fromFoot) or downward. onlyImportant: the touch-screen copy (MP-09) shows disasters and
+// other important messages only.
+void App::drawMessageBanner(Screen &s, int TW, int yLine, bool growUp, bool onlyImportant) {
+    const uint64_t now = platform::millis();
+    if (nmsgs <= 0 || now - msgs[0].at >= 8000) return;
+    if (onlyImportant && !msgs[0].important) return;
+    const uint8_t mr = msgs[0].important ? 255 : 230, mg = msgs[0].important ? 200 : 230, mb = msgs[0].important ? 80 : 230;
+    const int full = fb::textWidth(msgs[0].text, fb::FONT_BOLD) + 10;
+    if (full <= TW) {
+        fb::darken(s, 0, yLine, full, 17);
+        fb::textB(s, 5, yLine + 1, msgs[0].text, mr, mg, mb);
+        return;
+    }
+    char a[128], b[128];
+    const char *t = msgs[0].text;
+    int cut = 0;
+    for (int i = (int)strlen(t) - 1; i > 0; --i) {
+        if (t[i] != ' ') continue;
+        snprintf(a, sizeof a, "%.*s", i, t);
+        if (fb::textWidth(a, fb::FONT_BOLD) + 10 <= TW) { cut = i; break; }
+    }
+    if (cut <= 0) cut = (int)strlen(t) / 2;
+    snprintf(a, sizeof a, "%.*s", cut, t);
+    snprintf(b, sizeof b, "%s", msgs[0].text + cut + (msgs[0].text[cut] == ' ' ? 1 : 0));
+    const int y0 = growUp ? yLine - 17 : yLine;
+    fb::darken(s, 0, y0, TW, 34);
+    fb::textB(s, 5, y0 + 1, a, mr, mg, mb);
+    fb::textB(s, 5, y0 + 18, b, mr, mg, mb);
+}
+
+// Top screen HUD: the things you glance at while building on the bottom.
+//   bar:    funds, date, population, speed, R C I demand
+//   corner: whole-city minimap with the bottom map's frame
+//   foot:   newest city message, and the selected tool with its price
+void App::drawTopHud(Screen &s) {
+    char line[128], num[32];
+    // laid out for the screen it is drawn on: 400 on top, 320 on the touch screen when swapped
+    // (principle: swapped text stays full size and readable, never squeezed or cut off)
+    const int TW = s.w;
+    const bool narrow = TW < 400;
+    fb::darken(s, 0, 0, TW, 18);
+    fmtThousands(num, sizeof(num), (long)sim.totalFunds);
+    snprintf(line, sizeof(line), "$%s", num);
+    fb::textB(s, 5, 2, line, sim.totalFunds < 500 ? 255 : 255, sim.totalFunds < 500 ? 110 : 240, sim.totalFunds < 500 ? 90 : 150);
+    const int m = (sim.cityMonth >= 0 && sim.cityMonth < 12) ? (int)sim.cityMonth : 0;
+    snprintf(line, sizeof(line), "%s %ld", kMonths[m], (long)sim.cityYear);
+    fb::textB(s, narrow ? 66 : 104, 2, line, 230, 230, 230);
+    fmtThousands(num, sizeof(num), (long)sim.cityPop);
+    snprintf(line, sizeof(line), "Pop %s", num);
+    fb::textB(s, narrow ? 136 : 184, 2, line, 230, 230, 230);
+    const char *spd = sim.simSpeed == 0 ? (narrow ? "PAUSE" : "PAUSED") : sim.simSpeed == 1 ? "Slow" : sim.simSpeed == 2 ? (narrow ? "Med" : "Medium") : "Fast";
+    fb::textB(s, narrow ? TW - 92 : 290, 2, spd, sim.simSpeed == 0 ? 255 : 170, sim.simSpeed == 0 ? 120 : 220, sim.simSpeed == 0 ? 120 : 170);
+    // R C I demand: small bars around a centre line
+    float rd, cd, id;
+    sim.getDemands(&rd, &cd, &id);
+    const float d[3] = { rd, cd, id };
+    static const uint8_t col[3][3] = { {80, 220, 80}, {90, 140, 255}, {250, 210, 60} };
+    static const char *lab[3] = { "R", "C", "I" };
+    for (int i = 0; i < 3; ++i) {
+        const int x = TW - 48 + i * 16, mid = 9;
+        fb::text(s, x - 7, 3, lab[i], col[i][0], col[i][1], col[i][2]);
+        fb::fillRect(s, x, 1, 6, 16, 40, 40, 48);
+        fb::fillRect(s, x, mid, 6, 1, 120, 120, 130);
+        int h = (int)(d[i] * 8); if (h > 8) h = 8; if (h < -8) h = -8;
+        if (h > 0) fb::fillRect(s, x, mid - h, 6, h, col[i][0], col[i][1], col[i][2]);
+        else if (h < 0) fb::fillRect(s, x, mid + 1, 6, -h, col[i][0] / 2, col[i][1] / 2, col[i][2] / 2);
+    }
+
+    // minimap, top-right (every 2nd tile: 60 x 50)
+    fb::fillRect(s, TW - 64, 20, 64, 54, 0, 0, 0);
+    drawMinimap(s, TW - 62, 22, 2);
+    if (overlay != OV_NONE) {
+        const int w = fb::textWidth(kOverlayNames[overlay]) + 6;
+        fb::darken(s, TW - w, 75, w, 14);
+        fb::text(s, TW - w + 3, 76, kOverlayNames[overlay], 200, 220, 255);
+        // UI rule 20: a key with words, so the colours are never the only signal
+        const char *lo = overlay == OV_POWER ? "off" : overlay == OV_GROWTH ? "fall" : "low";
+        const char *hi = overlay == OV_POWER ? "on" : overlay == OV_GROWTH ? "rise" : "high";
+        const int bw = 32, lw = fb::textWidth(lo), hw = fb::textWidth(hi);
+        const int kw = lw + bw + hw + 12, kx = TW - kw;
+        fb::darken(s, kx, 90, kw, 14);
+        fb::text(s, kx + 3, 91, lo, 200, 220, 255);
+        for (int i = 0; i < bw; i++) {
+            uint8_t rgb[3];
+            overlayColour(i * 255 / (bw - 1), rgb);
+            fb::fillRect(s, kx + 6 + lw + i, 93, 1, 8, rgb[0], rgb[1], rgb[2]);
+        }
+        fb::text(s, kx + 9 + lw + bw, 91, hi, 200, 220, 255);
+    }
+
+    // foot: newest message (8 s), then the tool line
+    const uint64_t now = platform::millis();
+    drawMessageBanner(s, TW, TOP_H - 34, true, false);
+    const ToolDef &t = kTools[toolIdx];
+    if (t.tool == TOOL_QUERY) return true;
+    if (sim.totalFunds < t.cost) return false;
+    if (t.size == 1) return true;
+    const int off = (t.size >= 3) ? 1 : 0;
+    for (int y = ty - off; y < ty - off + t.size; ++y)
+        for (int x = tx - off; x < tx - off + t.size; ++x) {
+            if (x < 0 || y < 0 || x >= WORLD_W || y >= WORLD_H) return false;
+            const int v = sim.map[x][y] & LOMASK;
+            if (v == DIRT) continue;
+            // same rule as Micropolis::tally(): trees, rubble, shore and stray wire auto-clear
+            const bool clears = (v >= FIRSTRIVEDGE && v <= LASTRUBBLE) ||
+                                (v >= POWERBASE + 2 && v <= POWERBASE + 12) ||
+                                (v >= TINYEXP && v <= LASTTINYEXP + 2);
+            if (!sim.autoBulldoze || !clears) return false;
+        }
+    return true;
+}
+
+bool App::applyToolAt(int tx, int ty) {
+    if (tx < 0 || ty < 0 || tx >= WORLD_W || ty >= WORLD_H) return true;
+    const ToolDef &t = kTools[toolIdx];
+    const ToolResult r = sim.doTool(t.tool, (short)tx, (short)ty);
+    if (r == TOOLRESULT_NO_MONEY) { pushMessage("Insufficient funds to build that.", true); return false; }
+    if (r == TOOLRESULT_NEED_BULLDOZE) pushMessage("Area must be bulldozed first.", true);
+    return true;
+}
+
+// Paint road / rail / wire / bulldozer / park from the last tile to (tx,ty)
+// in 4-connected steps, so a fast stroke still leaves a connected line.
+void App::paintLineTo(int tx, int ty) {
+    int x = tTileX, y = tTileY;
+    while (x != tx || y != ty) {
+        if (abs(tx - x) >= abs(ty - y)) x += (tx > x) ? 1 : -1;
+        else y += (ty > y) ? 1 : -1;
+        if (!applyToolAt(x, y)) { tstate = T_DONE; break; }
+    }
+    tTileX = tx; tTileY = ty;
+}
+
+void App::selectTool(int idx) {
+    if (idx < 0 || idx >= kToolCount) return;
+    if (idx != 7) prevToolIdx = idx;
+    toolIdx = idx;
+    if (stripSlotOf(idx) < 0) extraTool = idx;
+}
+
+void App::cycleStripTool(int dir) {
+    int slot = stripSlotOf(toolIdx);
+    if (slot < 0) slot = 7;
+    slot = (slot + 8 + dir) % 8;
+    selectTool(slot < 7 ? kStripTools[slot] : extraTool);
+}
+
+// Taps on the bar above the map and the tool strip below it.
+void App::handleUiTap(int x, int y) {
+    if (y < BAR_H) {
+        // buttons sit at y 6..29; the bar's 6-px margins still count as the nearest button
+        if (x < 80) { mode = MODE_BUDGET; budgetSel = 0; }                    // funds: budget
+        else if (x >= 132 && x < 176) { int sp = sim.simSpeed + 1; if (sp > 3) sp = 0; sim.setSpeed((short)sp); }
+        else if (x >= 176 && x < 258) overlay = (overlay + 1) % OV_COUNT;      // overlay cycle
+        else if (x >= 258 && x < 286) {                                       // jump to alert
+            if (alertX >= 0 && platform::millis() - alertAt < 30000) centerOn(alertX, alertY);
+        } else if (x >= 286) { mode = MODE_MENU; pmPage = 0; menuSel = 0; }
+        return;
+    }
+    if (y >= STRIP_Y) {
+        int slot = (x - SLOT_X0 + 2) / SLOT_STEP;
+        if (x < SLOT_X0) slot = 0;
+        if (slot > 7) slot = 7;
+        if (slot >= 0 && slot < 7) { selectTool(kStripTools[slot]); toolPopup = false; }
+        else if (slot == 7) {
+            if (toolIdx == extraTool && !toolPopup) toolPopup = true;
+            else if (toolPopup) toolPopup = false;
+            else selectTool(extraTool);
+        }
+    }
+}
+
+void App::handleMapTouch(const Input &in, uint64_t now) {
+    const int ts = bts();
+    const bool inMap = in.touchY >= MAP_Y0 && in.touchY < STRIP_Y;
+    const int tileX = camX + in.touchX / ts, tileY = camY + (in.touchY - MAP_Y0) / ts;
+    const ToolDef &tool = kTools[toolIdx];
+    const bool paintTool = tool.size == 1 && tool.tool != TOOL_QUERY;
+
+    if (in.touchDown) {
+        tStartX = in.touchX; tStartY = in.touchY; tStartMs = now;
+        if (toolPopup) {
+            toolPopup = false;
+            if (inMap) {
+                // the grid: 4 x 4 cells of 80 x 47 over the map area
+                int col = (in.touchX - POP_X0 + 2) / POP_STEPX, row = (in.touchY - MAP_Y0 - 4 + 2) / POP_STEPY;
+                if (in.touchX < POP_X0) col = 0;
+                if (col > 3) col = 3;
+                if (row > 3) row = 3;
+                if (col >= 0 && col < 4 && row >= 0 && row < 4) selectTool(row * 4 + col);
+                tstate = T_DONE;
+                return;
+            }
+        }
+        if (!inMap) { handleUiTap(in.touchX, in.touchY); tstate = T_DONE; return; }
+        if (in.held & (BTN_L | BTN_R)) {
+            tstate = T_PAN; panCamX0 = camX; panCamY0 = camY; shoulderUsedForPan = true;
+            return;
+        }
+        tstate = T_PENDING;
+        tTileX = tileX; tTileY = tileY;
+        curX = tileX; curY = tileY; clampCamera();
+        dragFunds0 = sim.totalFunds;
+        return;
+    }
+
+    if (!in.touch) {   // stylus lifted
+        if (tstate == T_PENDING || tstate == T_PLACE) {
+            if (tool.tool == TOOL_QUERY || tstate == T_PLACE || !paintTool) applyToolAt(curX, curY);
+            else applyToolAt(tTileX, tTileY);
+        }
+        if (tstate == T_PAINT || tstate == T_PENDING) {
+            lastDragCost = dragFunds0 - sim.totalFunds;
+            lastDragAt = now;
+        }
+        tstate = T_NONE;
+        return;
+    }
+
+    // stylus held and moving
+    switch (tstate) {
+    case T_PAN: {
+        camX = panCamX0 + (tStartX - in.touchX) / ts;
+        camY = panCamY0 + (tStartY - in.touchY) / ts;
+        clampCamera();
+        return;
+    }
+    case T_PENDING:
+        if (tileX != tTileX || tileY != tTileY) {
+            if (paintTool) {
+                if (!applyToolAt(tTileX, tTileY)) { tstate = T_DONE; return; }
+                tstate = T_PAINT;
+                paintLineTo(tileX, tileY);
+            } else {
+                tstate = T_PLACE;
+            }
+            curX = tileX; curY = tileY; clampCamera();
+        } else if (now - tStartMs > (uint64_t)kHoldQueryMs && tool.tool != TOOL_QUERY) {
+            // press and hold: what is this?
+            sim.doTool(TOOL_QUERY, (short)tileX, (short)tileY);
+            tstate = T_DONE;
+        }
+        return;
+    case T_PAINT:
+    case T_PLACE: {
+        // near the map edge: scroll the map under the stylus
+        if (now - lastEdgeScrollMs > 110) {
+            int ex = 0, ey = 0;
+            if (in.touchX < kEdgeScrollPx) ex = -1; else if (in.touchX >= BOT_W - kEdgeScrollPx) ex = 1;
+            if (in.touchY < MAP_Y0 + kEdgeScrollPx) ey = -1; else if (in.touchY >= STRIP_Y - kEdgeScrollPx) ey = 1;
+            if (ex || ey) { camX += ex; camY += ey; clampCamera(); lastEdgeScrollMs = now; }
+        }
+        int nx = camX + in.touchX / ts, ny = camY + (std::min(std::max(in.touchY, MAP_Y0), STRIP_Y - 1) - MAP_Y0) / ts;
+        if (nx < 0) nx = 0; if (nx >= WORLD_W) nx = WORLD_W - 1;
+        if (ny < 0) ny = 0; if (ny >= WORLD_H) ny = WORLD_H - 1;
+        if (tstate == T_PAINT && (nx != tTileX || ny != tTileY)) paintLineTo(nx, ny);
+        curX = nx; curY = ny;
+        return;
+    }
+    default:
+        return;   // T_DONE / T_NONE (a touch left over from a menu): ignore until lifted
+    }
+}
+
+void App::handlePlayInput(const Input &in, uint64_t now) {
+    // --- cursor / camera
+    int dx = 0, dy = 0;
+    if (in.repeat & BTN_LEFT) dx = -1;
+    if (in.repeat & BTN_RIGHT) dx = 1;
+    if (in.repeat & BTN_UP) dy = -1;
+    if (in.repeat & BTN_DOWN) dy = 1;
+    // circle pad scrolls the map continuously (faster when pushed fully)
+    if (abs(in.cpadX) > 40 || abs(in.cpadY) > 40) {
+        const int interval = (abs(in.cpadX) > 130 || abs(in.cpadY) > 130) ? 35 : 70;
+        if (now - lastRepeatMs > (uint64_t)interval) {
+            lastRepeatMs = now;
+            const int sx = (in.cpadX > 40) - (in.cpadX < -40), sy = (in.cpadY < -40) - (in.cpadY > 40);
+            camX += sx; camY += sy; curX += sx; curY += sy;
+            clampCamera();
+        }
+    }
+    if (dx || dy) {
+        curX += dx; curY += dy;
+        clampCamera();
+        keepCursorVisible();
+        if (dragging) applyToolAt(curX, curY);   // A held while moving paints the path
+    }
+
+    // --- buttons
+    if (in.down & BTN_A) { applyToolAt(curX, curY); dragging = true; }
+    if (!(in.held & BTN_A)) dragging = false;
+    // L / R: previous / next tool in the strip -- on release, so L/R + drag can pan
+    static uint32_t prevHeld = 0;
+    const uint32_t released = prevHeld & ~in.held;
+    prevHeld = in.held;
+    if (released & (BTN_L | BTN_R)) {
+        if (!shoulderUsedForPan) cycleStripTool((released & BTN_L) ? -1 : 1);
+        if (!(in.held & (BTN_L | BTN_R))) shoulderUsedForPan = false;
+    }
+    if (in.down & BTN_B) {
+        if (toolPopup) toolPopup = false;
+        else if (toolIdx == 7) toolIdx = prevToolIdx;   // B again: back to what you had
+        else selectTool(7);
+    }
+    if (in.down & BTN_Y) { zoomOut = !zoomOut; centerOn(curX, curY); }
+    if (in.down & BTN_X) { mode = MODE_BUDGET; budgetSel = 0; }
+    if (in.down & BTN_START) { mode = MODE_MENU; pmPage = 0; menuSel = 0; toolPopup = false; }
+    if (in.down & BTN_ZR) overlay = (overlay + 1) % OV_COUNT;
+    if (in.down & BTN_SELECT) {
+        int sp = sim.simSpeed + 1;
+        if (sp > 3) sp = 0;
+        sim.setSpeed((short)sp);
+    }
+
+    // --- stylus
+    if (in.touch || tstate != T_NONE) handleMapTouch(in, now);
+}
+
+// Two-column button grids (rule 11): 152 x 24 buttons at x 6 / 162, rows 28 apart from y0.
+// Column-major: the first `rows` items run down the left column.
+static int menuHit(int x, int y, int rows, int y0) {
+    if (y < y0 - 2 || x < 4 || x >= 316) return -1;
+    int r = (y - y0 + 2) / 28, c = x < 160 ? 0 : 1;
+    if (r >= rows) return -1;
+    return c * rows + r;
+}
+static void menuButton(Screen &s, int i, int rows, int y0, const char *label, bool sel, int rr, int gg, int bb) {
+    // house style (claude/3ds-look-and-feel.md): blue face, light edge, shadow, gold focus ring
+    (void)rr; (void)gg; (void)bb;
+    const int c = i / rows, r = i % rows, x = 6 + c * 156, y = y0 + r * 28;
+    fb::fillRect(s, x + 2, y + 2, 152, 24, 20, 30, 70);
+    fb::fillRect(s, x, y, 152, 24, 40, 56, 120);
+    fb::rectOutline(s, x, y, 152, 24, 120, 150, 230);
+    if (sel) { fb::rectOutline(s, x - 2, y - 2, 156, 28, 255, 204, 64); fb::rectOutline(s, x - 3, y - 3, 158, 30, 255, 204, 64); }
+    fb::text(s, x + (152 - fb::textWidth(label)) / 2, y + 6, label, 235, 240, 250);
+}
+// House frame: navy, a header bar with the title in gold, a hint strip at the bottom.
+static void houseFrame(Screen &s, const char *title, const char *hint) {
+    fb::fillRect(s, 0, 0, BOT_W, BOT_H, 8, 12, 40);
+    fb::fillRect(s, 0, 0, BOT_W, 22, 40, 56, 120);
+    fb::fillRect(s, 0, 22, BOT_W, 1, 120, 150, 230);
+    fb::textB(s, 8, 5, title, 255, 204, 64);
+    fb::fillRect(s, 0, 224, BOT_W, 16, 40, 56, 120);
+    fb::fillRect(s, 0, 224, BOT_W, 1, 120, 150, 230);
+    fb::text(s, (BOT_W - fb::textWidth(hint)) / 2, 228, hint, 255, 204, 64);
+}
+static const char *const kPmMain[7] = { "RESUME", "MANUAL", "SAVE CITY", "LOAD CITY", "NEW CITY...", "DISASTERS...", "EXIT GAME" };
+static const char *const kPmCities[10] = { "New city", "Dullsville 1900", "San Francisco 1906", "Hamburg 1944",
+    "Bern 1965", "Tokyo 1957", "Detroit 1972", "Boston 2010", "Rio de Janeiro 2047", "Back" };
+
+void App::handleMenuInput(const Input &in) {
+    // START menu, house style. Page 0: main list (2 x 4, column-major), page 1: new city and
+    // scenarios (2 x 5), page 2: exit question (YES / NO, NO chosen).
+    const int rows = pmPage == 0 ? 4 : pmPage == 1 ? 5 : 1;
+    const int items = pmPage == 0 ? 7 : pmPage == 1 ? 10 : 2;   // pages 2 and 3: YES / NO
+    if (in.repeat & BTN_UP) menuSel = (menuSel + items - 1) % items;
+    if (in.repeat & BTN_DOWN) menuSel = (menuSel + 1) % items;
+    if (in.repeat & (BTN_LEFT | BTN_RIGHT)) {
+        int n = menuSel + ((in.repeat & BTN_RIGHT) ? rows : -rows);
+        if (n >= 0 && n < items) menuSel = n;
+    }
+    if (in.down & (BTN_B | BTN_START)) {
+        if (pmPage == 0 || pmPage == 3) { mode = MODE_PLAY; tstate = T_DONE; pmPage = 0; }   // save failed: back to the city
+        else { menuSel = pmPage == 1 ? 4 : 6; pmPage = 0; }
+        return;
+    }
+    bool pick = (in.down & BTN_A) != 0;
+    if (in.touchDown) {
+        const int i = menuHit(in.touchX, in.touchY, rows, pmPage >= 2 ? 120 : 32);
+        if (i >= 0 && i < items) { menuSel = i; pick = true; }
+    }
+    if (!pick) return;
+    tstate = T_DONE;
+    if (pmPage == 2) {
+        if (menuSel == 0) {   // never lose progress: the city is saved before the game ends
+            if (saveCity()) quitRequested = true;
+            else { pmPage = 3; menuSel = 1; return; }   // MP-02: it failed, ask (focus on NO)
+        }
+        pmPage = 0; menuSel = 6;
+        return;
+    }
+    if (pmPage == 3) {
+        if (menuSel == 0) quitRequested = true;          // EXIT ANYWAY
+        else { mode = MODE_PLAY; tstate = T_DONE; }       // NO: back to the city
+        pmPage = 0; menuSel = 6;
+        return;
+    }
+    if (pmPage == 1) {
+        if (menuSel == 0) { newCity(0); mode = MODE_PLAY; }
+        else if (menuSel <= 8) { loadScenario(menuSel); mode = MODE_PLAY; }
+        pmPage = 0; menuSel = 4;
+        return;
+    }
+    switch (menuSel) {
+    case 0: mode = MODE_PLAY; break;
+    case 1: g_manual.open(); mode = MODE_HELP; break;
+    case 2: {
+        if (saveCity()) pushMessage("City saved.", false);
+        else pushMessage("Save failed - is the SD card full?", true);
+        mode = MODE_PLAY;
+        break;
+    }
+    case 3: scanCities(); citySel = 0; mode = MODE_LOADCITY; break;
+    case 4: pmPage = 1; menuSel = 0; break;
+    case 5: mode = MODE_DISASTERS; menuSel = 0; break;
+    case 6: pmPage = 2; menuSel = 1; break;
+    }
+}
+
+void App::handleDisasterInput(const Input &in) {
+    const int items = 7;
+    if (in.repeat & BTN_UP) menuSel = (menuSel + items - 1) % items;
+    if (in.repeat & BTN_DOWN) menuSel = (menuSel + 1) % items;
+    if (in.down & (BTN_B | BTN_START)) { mode = MODE_PLAY; tstate = T_DONE; return; }
+    bool pick = (in.down & BTN_A) != 0;
+    if (in.touchDown) {
+        const int i = menuHit(in.touchX, in.touchY, 4, 32);   // 2 x 4 grid, see drawDisasters
+        if (i >= 0 && i < items) { menuSel = i; pick = true; }
+    }
+    if (pick) {
+        tstate = T_DONE;
+        switch (menuSel) {
+        case 0: sim.makeFire(); break;
+        case 1: sim.makeFlood(); break;
+        case 2: sim.makeTornado(); break;
+        case 3: sim.makeEarthquake(); break;
+        case 4: sim.makeMonster(); break;
+        case 5: sim.makeMeltdown(); break;
+        default: break;
+        }
+        mode = MODE_PLAY;
+    }
+}
+
+void App::handleBudgetInput(const Input &in) {
+    if (in.repeat & BTN_UP) budgetSel = (budgetSel + 3) % 4;
+    if (in.repeat & BTN_DOWN) budgetSel = (budgetSel + 1) % 4;
+    int delta = 0;
+    if (in.repeat & BTN_LEFT) delta = -1;
+    if (in.repeat & BTN_RIGHT) delta = 1;
+    if (in.touchDown) {
+        const int x = in.touchX, y = in.touchY;
+        const int row = (y - 46) / 30;   // rows of 24-px buttons at y 48 + 30 * row (see drawBudget)
+        if (y >= 46 && row >= 0 && row < 4) {
+            budgetSel = row;
+            if (x >= 234 && x < 274) delta = -1;
+            else if (x >= 276) delta = 1;
+        } else if (y >= 200 && x >= 240) {
+            mode = MODE_PLAY; tstate = T_DONE; return;                                   // Done
+        }
+    }
+    if (delta) {
+        switch (budgetSel) {
+        case 0: { int t = sim.cityTax + delta; if (t < 0) t = 0; if (t > 20) t = 20; sim.setCityTax((short)t); break; }
+        case 1: sim.roadPercent = (float)((int)(sim.roadPercent * 100 + delta * 5 + 0.5f) / 100.0f); break;
+        case 2: sim.policePercent = (float)((int)(sim.policePercent * 100 + delta * 5 + 0.5f) / 100.0f); break;
+        case 3: sim.firePercent = (float)((int)(sim.firePercent * 100 + delta * 5 + 0.5f) / 100.0f); break;
+        }
+        if (sim.roadPercent < 0) sim.roadPercent = 0; if (sim.roadPercent > 1) sim.roadPercent = 1;
+        if (sim.policePercent < 0) sim.policePercent = 0; if (sim.policePercent > 1) sim.policePercent = 1;
+        if (sim.firePercent < 0) sim.firePercent = 0; if (sim.firePercent > 1) sim.firePercent = 1;
+        sim.updateFundEffects();
+    }
+    if (in.down & (BTN_A | BTN_B | BTN_X | BTN_START)) { mode = MODE_PLAY; tstate = T_DONE; }
+}
+
+void App::frame(const Input &in) {
+    const uint64_t now = platform::millis();
+    ++frameCounter;
+
+    switch (mode) {
+    case MODE_PLAY: handlePlayInput(in, now); break;
+    case MODE_MENU: handleMenuInput(in); break;
+    case MODE_BUDGET: handleBudgetInput(in); break;
+    case MODE_DISASTERS: handleDisasterInput(in); break;
+    case MODE_HELP: handleHelpInput(in); break;
+    case MODE_LOADCITY: handleLoadCityInput(in); break;
+    case MODE_QUERY: if ((in.down & (BTN_A | BTN_B)) || in.touchDown) { mode = MODE_PLAY; query.valid = false; tstate = T_DONE; } break;
+    }
+
+    if (mode == MODE_PLAY || mode == MODE_QUERY) {
+        tickSim(now);
+        // MP-01: count play time; a gap over 100 ms (HOME Menu, sleep, a slow save) counts as 100 ms
+        const uint64_t dt = lastFrameMs && now > lastFrameMs ? now - lastFrameMs : 0;
+        playMsSinceSave += dt > 100 ? 100 : dt;
+        if (playMsSinceSave >= kAutosaveMs) {
+            const bool ok = saveCity();   // between sim ticks, on the main thread: the same save as Menu > Save city
+            platform::log("timed autosave %s", ok ? "ok" : "FAILED");
+            if (ok) pushMessage("City autosaved.", false);
+            else pushMessage("Save failed - is the SD card full?", true);
+        }
+    }
+    lastFrameMs = now;
+    updateTopCamera();
+
+    render(in.slider);
+}
+
+// ---------------------------------------------------------------------------
+// Rendering
+// ---------------------------------------------------------------------------
+
+int App::depthClass(int v) const {
+    const int t = v & LOMASK;
+    if (t >= WATER_LOW && t <= WATER_HIGH) return DEPTH_GROUND;   // water sits on the screen plane: no gaps at shorelines
+    if (t == DIRT) return DEPTH_GROUND;
+    if (t >= WOODS_LOW && t <= WOODS_HIGH) return DEPTH_LOW;      // trees
+    if (t < RESBASE) return DEPTH_GROUND;                           // rubble, roads, rail, wire, fire
+    if (t <= HHTHR) return DEPTH_LOW;                               // empty res zone, single houses
+    if (t >= RZB - 4 && t < HOSPITAL - 4) {                         // residential 3x3, 4 densities
+        const int den = ((t - (RZB - 4)) / 9) % 4;
+        return DEPTH_LOW + (den >= 3 ? 2 : den >= 1 ? 1 : 0);
+    }
+    if (t < COMBASE) return DEPTH_MID;                              // hospital, church
+    if (t <= COMBASE + 8) return DEPTH_LOW;                         // empty commercial
+    if (t <= COMLAST) {                                             // commercial, 5 densities
+        const int den = ((t - (CZB - 4)) / 9) % 5;
+        return den >= 4 ? DEPTH_TOWER : den >= 2 ? DEPTH_HIGH : den >= 1 ? DEPTH_MID : DEPTH_LOW;
+    }
+    if (t <= LASTIND) return DEPTH_LOW;                             // empty industrial
+    if (t < PORTBASE) {                                             // industrial, 4 densities
+        const int den = ((t - (IZB - 4)) / 9) % 4;
+        return den >= 2 ? DEPTH_HIGH : DEPTH_MID;
+    }
+    if (t >= STADIUMBASE && t <= STADIUMBASE + 15) return DEPTH_HIGH;
+    if (t >= NUCLEARBASE && t <= LASTZONE) return DEPTH_HIGH;
+    if (t >= COALBASE && t <= LASTPOWERPLANT) return DEPTH_HIGH;
+    if (t >= PORTBASE && t <= LASTZONE) return DEPTH_MID;          // seaport, airport, stations
+    return DEPTH_MID;
+}
+
+static const char *kOverlayNames[] = {
+    "City", "Power", "Pollution", "Crime", "Land value", "Traffic", "Density", "Fire cover",
+    "Police cover", "Growth",
+};
+
+int App::overlayMax() const {
+    int m = 1;
+    for (int y = 0; y < WORLD_H; y += 2)
+        for (int x = 0; x < WORLD_W; x += 2) {
+            int v = 0;
+            switch (overlay) {
+            case OV_POLLUTION:  v = sim.pollutionDensityMap.worldGet(x, y); break;
+            case OV_CRIME:      v = sim.crimeRateMap.worldGet(x, y); break;
+            case OV_LANDVALUE:  v = sim.landValueMap.worldGet(x, y); break;
+            case OV_TRAFFIC:    v = sim.trafficDensityMap.worldGet(x, y); break;
+            case OV_POPDENSITY: v = sim.populationDensityMap.worldGet(x, y); break;
+            default: return 255;
+            }
+            if (v > m) m = v;
+        }
+    return m;
+}
+
+int App::stretch(int v) const {
+    const int s = v * 255 / overlayMaxCached;
+    return s > 255 ? 255 : s;
+}
+
+int App::overlayValue(int tx, int ty) const {
+    switch (overlay) {
+    case OV_POWER: {
+        const unsigned short v = sim.map[tx][ty];
+        if (!(v & CONDBIT)) return -1;
+        return (v & PWRBIT) ? 255 : 40;
+    }
+    // the density maps are 0..~250 in theory but rarely exceed 100 in play;
+    // stretch to the map's current maximum so the ramp is always readable
+    case OV_POLLUTION:  return stretch(sim.pollutionDensityMap.worldGet(tx, ty));
+    case OV_CRIME:      return stretch(sim.crimeRateMap.worldGet(tx, ty));
+    case OV_LANDVALUE:  return stretch(sim.landValueMap.worldGet(tx, ty));
+    case OV_TRAFFIC:    return stretch(sim.trafficDensityMap.worldGet(tx, ty));
+    case OV_POPDENSITY: return stretch(sim.populationDensityMap.worldGet(tx, ty));
+    case OV_FIRE:       { int v = sim.fireStationEffectMap.worldGet(tx, ty); return v > 255 ? 255 : v; }
+    case OV_POLICE:     { int v = sim.policeStationEffectMap.worldGet(tx, ty); return v > 255 ? 255 : v; }
+    case OV_GROWTH:     { int v = sim.rateOfGrowthMap.worldGet(tx, ty); v = 128 + v * 2; return v < 0 ? 0 : v > 255 ? 255 : v; }
+    default:            return -1;
+    }
+}
+
+// Heat ramp: blue (low) -> green -> yellow -> red (high). Growth uses a
+// diverging ramp around 128 instead.
+void App::overlayColour(int v, uint8_t *rgb) const {
+    if (overlay == OV_GROWTH) {
+        const int d = v - 128;
+        if (d < 0) { rgb[0] = 200; rgb[1] = (uint8_t)(200 + d * 1.5f); rgb[2] = (uint8_t)(200 + d * 1.5f); }
+        else       { rgb[0] = (uint8_t)(200 - d * 1.5f); rgb[1] = 200; rgb[2] = (uint8_t)(200 - d * 1.5f); }
+        return;
+    }
+    if (overlay == OV_POWER) {
+        if (v > 128) { rgb[0] = 255; rgb[1] = 230; rgb[2] = 60; }
+        else         { rgb[0] = 60;  rgb[1] = 60;  rgb[2] = 220; }
+        return;
+    }
+    if (v < 85)       { rgb[0] = 0;   rgb[1] = (uint8_t)(v * 3);          rgb[2] = (uint8_t)(255 - v * 3); }
+    else if (v < 170) { rgb[0] = (uint8_t)((v - 85) * 3); rgb[1] = 255;   rgb[2] = 0; }
+    else              { rgb[0] = 255; rgb[1] = (uint8_t)(255 - (v - 170) * 3); rgb[2] = 0; }
+}
+
+static inline void drawTileAt(Screen &s, int sx, int sy, int t, int ts, bool dim = false) {
+    if (ts == 16) fb::tile(s, sx, sy, t, dim);
+    else if (ts == 8) fb::tileHalf(s, sx, sy, t, dim);
+    else fb::tile2x(s, sx, sy, t);
+}
+static inline int floorDiv(int a, int b) { return a >= 0 ? a / b : -((-a + b - 1) / b); }
+
+// Draw every visible cell whose depth class matches `pass` (-1: every cell,
+// for the flat map). The GROUND pass also lays a base tile under elevated
+// cells so the stereo parallax never exposes black.
+void App::drawTiles(Screen &s, const View &v, int pass, int dx) {
+    const int ts = v.ts;
+    const int c0 = floorDiv(v.ox, ts) - 1, c1 = (v.ox + v.w) / ts + 1;
+    const int r0 = floorDiv(v.oy, ts), r1 = (v.oy + v.h - 1) / ts;
+    for (int ty = r0; ty <= r1; ++ty) {
+        if (ty < 0 || ty >= WORLD_H) continue;
+        const int sy = v.sy0 + ty * ts - v.oy;
+        for (int tx = c0; tx <= c1; ++tx) {
+            if (tx < 0 || tx >= WORLD_W) continue;
+            const unsigned short val = sim.map[tx][ty];
+            const int t = val & LOMASK;
+            const int sx = tx * ts - v.ox + dx;
+            // unpowered zone centres blink in the original; show a dim variant
+            const bool dim = (val & ZONEBIT) && !(val & PWRBIT) && (sim.blinkFlag < 0);
+            if (pass < 0) { drawTileAt(s, sx, sy, t, ts, dim); continue; }
+            const int cls = depthClass(val);
+            if (cls == pass) {
+                drawTileAt(s, sx, sy, t, ts, dim);
+            } else if (pass == DEPTH_GROUND && cls > DEPTH_GROUND) {
+                int fill = t;
+                for (int d = 1; d <= 2; ++d) {
+                    if (tx - d >= 0 && depthClass(sim.map[tx - d][ty]) <= DEPTH_GROUND) { fill = sim.map[tx - d][ty] & LOMASK; break; }
+                    if (tx + d < WORLD_W && depthClass(sim.map[tx + d][ty]) <= DEPTH_GROUND) { fill = sim.map[tx + d][ty] & LOMASK; break; }
+                }
+                drawTileAt(s, sx, sy, fill, ts);
+            }
+        }
+    }
+}
+
+// Blend the overlay colour over each visible tile (checkerboard, so the city
+// stays legible underneath).
+void App::drawOverlayTint(Screen &s, const View &v, int dx) {
+    const int ts = v.ts;
+    const int c0 = floorDiv(v.ox, ts) - 1, c1 = (v.ox + v.w) / ts + 1;
+    const int r0 = floorDiv(v.oy, ts), r1 = (v.oy + v.h - 1) / ts;
+    for (int ty = r0; ty <= r1; ++ty) {
+        if (ty < 0 || ty >= WORLD_H) continue;
+        for (int tx = c0; tx <= c1; ++tx) {
+            if (tx < 0 || tx >= WORLD_W) continue;
+            const int val = overlayValue(tx, ty);
+            if (val < 0) continue;
+            uint8_t rgb[3]; overlayColour(val, rgb);
+            const int sx = tx * ts - v.ox + dx, sy = v.sy0 + ty * ts - v.oy;
+            for (int y = 0; y < ts; ++y) {
+                const int yy = sy + y; if (yy < v.sy0 || yy >= v.sy0 + v.h || yy >= s.h) continue;
+                for (int x = (y & 1); x < ts; x += 2) {
+                    const int xx = sx + x; if (xx < 0 || xx >= s.w) continue;
+                    uint8_t *p = s.px(xx, yy);
+                    p[0] = (p[0] + rgb[0]) / 2; p[1] = (p[1] + rgb[1]) / 2; p[2] = (p[2] + rgb[2]) / 2;
+                }
+            }
+        }
+    }
+}
+
+void App::drawSprites(Screen &s, const View &v, int dx) {
+    for (SimSprite *sp = sim.spriteList; sp; sp = sp->next) {
+        if (sp->frame == 0) continue;
+        const int sx = sp->x * v.ts / 16 - v.ox + dx;
+        const int sy = v.sy0 + sp->y * v.ts / 16 - v.oy;
+        if (v.ts == 8) fb::spriteHalf(s, sx, sy, sp->type, sp->frame);
+        else fb::sprite(s, sx, sy, sp->type, sp->frame, v.ts / 16);
+    }
+}
+
+// The selected tool's footprint at the cursor: yellow when it can be built
+// there, red when the site is blocked or the city can't afford it.
+void App::drawFootprint(Screen &s, const View &v, int dx, bool thick) {
+    const int ts = v.ts;
+    const ToolDef &t = kTools[toolIdx];
+    const int size = t.size, off = (size >= 3) ? 1 : 0;
+    const int x = (curX - off) * ts - v.ox + dx, y = v.sy0 + (curY - off) * ts - v.oy;
+    const bool ok = siteOk(curX, curY);
+    const bool blink = (frameCounter / 15) & 1;
+    const uint8_t hi = blink ? 255 : 190;
+    const uint8_t r = hi, g = ok ? hi : 60, b = ok ? 40 : 40;
+    fb::rectOutline(s, x - 1, y - 1, size * ts + 2, size * ts + 2, r, g, b);
+    if (thick) fb::rectOutline(s, x - 2, y - 2, size * ts + 4, size * ts + 4, r, g, b);
+    fb::rectOutline(s, x, y, size * ts, size * ts, 0, 0, 0);
+}
+
+void App::drawCity(Screen &s, int eye, float slider) {
+    fb::clear(s, 0, 0, 0);
+    View v; topOrigin(v.ox, v.oy, s.w); v.ts = topTs(); v.sy0 = 0; v.w = s.w; v.h = TOP_H;
+    const float parScale = v.ts == 32 ? 1.5f : 1.f;
+    // The cursor sits on the surface it points at: the ground for empty land,
+    // roads and water, or the top of the tallest building under its footprint.
+    const ToolDef &tool = kTools[toolIdx];
+    const int off = (tool.size >= 3) ? 1 : 0;
+    int cursorPass = DEPTH_GROUND;
+    for (int y = curY - off; y < curY - off + tool.size; ++y)
+        for (int x = curX - off; x < curX - off + tool.size; ++x)
+            if (x >= 0 && y >= 0 && x < WORLD_W && y < WORLD_H)
+                cursorPass = std::max(cursorPass, depthClass(sim.map[x][y]));
+    if (cursorPass >= DEPTH_SPRITE) cursorPass = DEPTH_TOWER;
+    // Layers: water and ground on the screen plane, buildings rise with
+    // density, vehicles nearest. Right eye shifts left for in-front content.
+    for (int pass = 0; pass < DEPTH_COUNT; ++pass) {
+        int dx = 0;
+        if (eye != 0 && slider > 0.f) {
+            const float par = (float)(pass - DEPTH_GROUND) * kParallaxPx * slider * parScale;
+            dx = -(int)(eye * par + (eye * par >= 0 ? 0.5f : -0.5f));
+        }
+        if (pass == DEPTH_SPRITE) drawSprites(s, v, dx);
+        else drawTiles(s, v, pass, dx);
+        if (pass == DEPTH_GROUND && overlay != OV_NONE)
+            drawOverlayTint(s, v, dx);
+        if (pass == cursorPass) drawFootprint(s, v, dx, false);
+    }
+    drawTopHud(s);
+}
+
+static void fmtThousands(char *out, size_t n, long v) {
+    char tmp[32];
+    snprintf(tmp, sizeof(tmp), "%ld", v < 0 ? -v : v);
+    const int len = (int)strlen(tmp);
+    size_t o = 0;
+    if (v < 0 && o < n - 1) out[o++] = '-';
+    for (int i = 0; i < len && o < n - 1; ++i) {
+        out[o++] = tmp[i];
+        const int rest = len - 1 - i;
+        if (rest > 0 && rest % 3 == 0 && o < n - 1) out[o++] = ',';
+    }
+    out[o] = 0;
+}
+
+static const char *kMonths[12] = { "Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec" };
+
 // Top screen HUD: the things you glance at while building on the bottom.
 //   bar:    funds, date, population, speed, R C I demand
 //   corner: whole-city minimap with the bottom map's frame
@@ -1215,6 +1955,8 @@ void App::drawBottom() {
     }
     drawBottomBar(s);
     drawToolStrip(s);
+    // MP-09: a disaster (or any important message) also shows here, on the map the player is looking at
+    if (mode == MODE_PLAY && !toolPopup) drawMessageBanner(s, BOT_W, BAR_H + 2, false, true);
 
     if (mode == MODE_BUDGET) drawBudget(s);
     else if (mode == MODE_MENU) drawMenu(s);

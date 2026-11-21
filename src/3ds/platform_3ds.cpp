@@ -277,8 +277,27 @@ int main(int argc, char **argv) {
         char path[256];
         snprintf(path, sizeof(path), "%s/autosave.cty", kSaveDir);
         struct stat st;
-        if (stat(path, &st) == 0) app->loadCity(path);
-        else app->newCity(0);
+        if (stat(path, &st) == 0) {
+            // MP-04: the autosave won't load (a card error, a half-written file): try the previous
+            // save (.bak, kept by every save), else start a new city and say so. The unreadable file
+            // is moved aside, never overwritten by the next save's .bak rotation or deleted.
+            if (!app->loadCity(path)) {
+                char bak[300], aside[300];
+                snprintf(bak, sizeof(bak), "%s.bak", path);
+                platform::log("boot: autosave.cty did not load");
+                if (stat(bak, &st) == 0 && app->loadCity(bak)) {
+                    app->pushMessage("Autosave was unreadable: opened the previous save.", true);
+                    platform::log("boot: loaded autosave.cty.bak");
+                } else {
+                    app->newCity(0);
+                    app->pushMessage("Saved city unreadable: started a new city.", true);
+                    platform::log("boot: no readable save, new city");
+                }
+                snprintf(aside, sizeof(aside), "%s/autosave-unreadable.cty", kSaveDir);
+                remove(aside);
+                if (rename(path, aside) != 0) platform::log("boot: could not move the unreadable save aside");
+            }
+        } else app->newCity(0);
 
         while (platform::running() && !app->quitRequested) {
             Input in;
