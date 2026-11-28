@@ -57,14 +57,30 @@ private:
     // ---- alert location (from the engine's message callback)
     int alertX = -1, alertY = -1; uint64_t alertAt = 0;
 
-    enum Mode { MODE_PLAY, MODE_BUDGET, MODE_MENU, MODE_QUERY, MODE_DISASTERS, MODE_HELP, MODE_LOADCITY } mode = MODE_PLAY;
+    enum Mode { MODE_PLAY, MODE_BUDGET, MODE_MENU, MODE_QUERY, MODE_HELP, MODE_LOADCITY } mode = MODE_PLAY;
     int helpPage = 0;
     // city files found in <saveDir>/cities for the Load city browser
     static const int kMaxCities = 64;
-    char cityNames[kMaxCities][40];
+    char cityNames[kMaxCities][84];   // what the row says
+    char cityPaths[kMaxCities][160];  // the file it opens
     int nCities = 0, citySel = 0;
     bool hasAutosave = false;              // entry 0 is <saveDir>/autosave.cty
     void scanCities();
+    // MP-Q1 / MP-Q2: nothing replaces the city in play without a question, and it is kept
+    static const int kKeepMax = 12;        // "Earlier city" copies kept in <saveDir>/kept
+    bool cityEdited = false;               // the city in play holds work that is in no other file
+    int askKind = 0, askArg = 0;           // what the question page is about (askReplace) / which disaster
+    char askLine1[64] = "";
+    void askReplace(int kind, int arg);
+    void doReplace();
+    bool keepCurrentCity();
+    void centerOnLand();
+    // MP-Q6: scenario clock kept beside the city file
+    int pendScenario = 0, pendScore = 0, pendDisWait = 0, pendDisEvent = 0, pendScoreType = 0;
+    void writeScenarioNote(const char *ctyPath);
+    void readScenarioNote(const char *ctyPath);
+    int gridSel = 0;                       // D-pad highlight in the 16-tool grid
+    void openToolGrid();
     int menuSel = 0;
     int pmPage = 0;   // START menu page: 0 main, 1 new city / scenarios, 2 exit question, 3 save failed
     bool saveFailed = false;   // set by the engine's didntSaveCity callback (MP-02)
@@ -83,6 +99,7 @@ private:
     int stretch(int v) const;
     int overlayMaxCached = 255;
     void overlayColour(int value, uint8_t *rgb) const;
+    bool overlayShows(int value) const;
 
     // ---- messages
     struct Msg { char text[72]; uint64_t at; bool important; };
@@ -103,7 +120,6 @@ private:
     void handleUiTap(int x, int y);
     void handleMenuInput(const Input &in);
     void handleBudgetInput(const Input &in);
-    void handleDisasterInput(const Input &in);
     void handleHelpInput(const Input &in);
     void handleLoadCityInput(const Input &in);
     bool applyToolAt(int tx, int ty);      // false when the city ran out of money
@@ -141,7 +157,6 @@ private:
     void drawBudget(Screen &s);
     void drawMenu(Screen &s);
     void drawQuery(Screen &s);
-    void drawDisasters(Screen &s);
     void drawHelp(Screen &s);
     void drawLoadCity(Screen &s);
 

@@ -44,5 +44,6 @@ void sleepMs(unsigned ms);
 const char *resDir();           // where res/ (scenarios) lives
 const char *saveDir();          // writable city save directory
 void log(const char *fmt, ...);
+void makeDir(const char *path); // create a folder if it is not there
 void noteSimTick();             // one sim tick ran (debug.txt frame-time line)
 }

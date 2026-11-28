@@ -138,9 +138,67 @@ bool App::newCity(int seed) {
     sim.generateSomeCity(seed);
     sim.setGameLevelFunds(LEVEL_EASY);
     sim.setSpeed(2);
-    centerOn(WORLD_W / 2, WORLD_H / 2);
-    pushMessage("Started a new city.", false);
+    centerOnLand();
+    cityEdited = false; pendScenario = 0;
+    pushMessage("New city. Circle Pad scrolls the map.", false);
     return true;
+}
+
+// MP-X1: open the view on the 12 x 12 block with the most open land (ties: nearest the middle
+// of the map), so a first city never starts on open sea.
+void App::centerOnLand() {
+    int bestX = WORLD_W / 2, bestY = WORLD_H / 2, best = -1;
+    for (int y = 6; y + 6 <= WORLD_H; y += 3)
+        for (int x = 6; x + 6 <= WORLD_W; x += 3) {
+            int land = 0;
+            for (int yy = y - 6; yy < y + 6; ++yy)
+                for (int xx = x - 6; xx < x + 6; ++xx) {
+                    const int t = sim.map[xx][yy] & LOMASK;
+                    if (t >= ROADBASE) land += 8;                              // a loaded city: go where it is built
+                    else if (t == DIRT) land += 2;                             // open ground
+                    else if (t > WATER_HIGH) land += 1;                        // trees
+                }
+            const int ddx = x - WORLD_W / 2, ddy = y - WORLD_H / 2;
+            const int score = land * 16 - (abs(ddx) + abs(ddy));
+            if (score > best) { best = score; bestX = x; bestY = y; }
+        }
+    centerOn(bestX, bestY);
+}
+
+// ---- MP-Q6: a scenario's goal and deadline live beside the city file (<name>.scn), because the
+// classic .cty format has no room for them.
+static void scnPathOf(const char *cty, char *out, size_t n) {
+    snprintf(out, n, "%s", cty);
+    const size_t len = strlen(out);
+    if (len > 4 && !strcasecmp(out + len - 4, ".cty")) snprintf(out + len - 4, n - (len - 4), ".scn");
+    else if (len + 5 < n) strcat(out, ".scn");
+}
+void App::writeScenarioNote(const char *ctyPath) {
+    char scn[340], tmp[348];
+    scnPathOf(ctyPath, scn, sizeof(scn));
+    int sc = (int)sim.scenario, score = sim.scoreWait, dis = sim.disasterWait, ev = (int)sim.disasterEvent, st = (int)sim.scoreType;
+    if (pendScenario) { sc = pendScenario; score = pendScore; dis = pendDisWait; ev = pendDisEvent; st = pendScoreType; }
+    if (sc < 1 || sc > 8 || st < 1 || score <= 0) { remove(scn); return; }   // no scenario running (or already judged)
+    snprintf(tmp, sizeof(tmp), "%s.tmp", scn);
+    FILE *f = fopen(tmp, "w");
+    if (!f) return;
+    const bool ok = fprintf(f, "%d %d %d %d %d\n", sc, score, dis, ev, st) > 0;
+    if (fclose(f) != 0 || !ok) { remove(tmp); return; }
+    remove(scn);
+    if (rename(tmp, scn) != 0) remove(tmp);
+}
+void App::readScenarioNote(const char *ctyPath) {
+    char scn[340];
+    scnPathOf(ctyPath, scn, sizeof(scn));
+    pendScenario = 0;
+    FILE *f = fopen(scn, "r");
+    if (!f) return;
+    int sc = 0, score = 0, dis = 0, ev = 0, st = 0;
+    const int n = fscanf(f, "%d %d %d %d %d", &sc, &score, &dis, &ev, &st);
+    fclose(f);
+    if (n != 5 || sc < 1 || sc > 8 || st < 1 || st > 8 || ev < 0 || ev > 8 || score <= 0 || score > 30 * 48 || dis < 0 || dis > 2 * 48) return;
+    sim.scenario = (Scenario)sc;   // the engine sets its timers up on the next tick; ours go in after that (tickSim)
+    pendScenario = sc; pendScore = score; pendDisWait = dis; pendDisEvent = ev; pendScoreType = st;
 }
 
 bool App::loadCity(const char *path) {
@@ -149,8 +207,12 @@ bool App::loadCity(const char *path) {
         return false;
     }
     sim.setSpeed(2);
-    centerOn(WORLD_W / 2, WORLD_H / 2);
-    pushMessage("Restored a saved city.", false);
+    centerOnLand();
+    readScenarioNote(path);
+    // the city in the game's own save has no other copy; a city opened from the list still has its file
+    cityEdited = strstr(path, "autosave.cty") != nullptr;
+    if (pendScenario) pushMessage("Restored a saved city. The scenario goes on.", false);
+    else pushMessage("Restored a saved city.", false);
     return true;
 }
 
@@ -159,7 +221,8 @@ bool App::loadScenario(int which) {
         return false;
     sim.loadScenario((Scenario)which);
     sim.setSpeed(2);
-    centerOn(WORLD_W / 2, WORLD_H / 2);
+    centerOnLand();
+    cityEdited = false; pendScenario = 0;
     return true;
 }
 
@@ -226,7 +289,53 @@ bool App::saveCity() {
     saveFailed = false;
     sim.saveCityAs(path);   // reports through didSaveCity / didntSaveCity
     playMsSinceSave = 0;    // MP-01: any save restarts the autosave clock
+    if (!saveFailed) writeScenarioNote(path);
     return !saveFailed;
+}
+
+// ---- MP-Q1 / MP-Q2: the city in play is never thrown away. Before NEW CITY, a scenario or LOAD
+// CITY replaces it, it is written to <saveDir>/kept/kept-NNNN.cty (its own file, not the game's
+// save), and LOAD CITY lists those as "Earlier city". The newest kKeepMax are kept.
+static int keptNumber(const char *name) {
+    int n = 0;
+    if (strncasecmp(name, "kept-", 5) != 0) return -1;
+    const char *q = name + 5;
+    if (!*q) return -1;
+    for (; *q >= '0' && *q <= '9'; ++q) n = n * 10 + (*q - '0');
+    return strcasecmp(q, ".cty") == 0 ? n : -1;
+}
+bool App::keepCurrentCity() {
+    if (!cityEdited) return true;   // nothing of the player's in it, or its file is still on the card
+    char dir[256], path[340];
+    snprintf(dir, sizeof(dir), "%s/kept", platform::saveDir());
+    platform::makeDir(dir);
+    int nums[80], n = 0, hi = 0;
+    if (DIR *d = opendir(dir)) {
+        struct dirent *e;
+        while ((e = readdir(d))) {
+            const int k = keptNumber(e->d_name);
+            if (k < 0) continue;
+            if (k > hi) hi = k;
+            if (n < 80) nums[n++] = k;
+        }
+        closedir(d);
+    }
+    snprintf(path, sizeof(path), "%s/kept-%04d.cty", dir, hi + 1);
+    saveFailed = false;
+    sim.saveCityAs(path);
+    if (saveFailed) { platform::log("keep: could not write %s", path); return false; }
+    writeScenarioNote(path);
+    platform::log("keep: city in play kept as kept-%04d.cty", hi + 1);
+    // only when the new copy is safely written: drop the oldest beyond the limit
+    std::sort(nums, nums + n);
+    for (int i = 0; i + (kKeepMax - 1) < n; ++i) {
+        char scn[340];
+        snprintf(path, sizeof(path), "%s/kept-%04d.cty", dir, nums[i]);
+        scnPathOf(path, scn, sizeof(scn));
+        remove(path); remove(scn);
+    }
+    cityEdited = false;
+    return true;
 }
 
 void App::pushMessage(const char *text, bool important) {
@@ -260,6 +369,11 @@ void App::tickSim(uint64_t now) {
             sim.simTick();
             platform::noteSimTick();
             ++n;
+            if (pendScenario && sim.initSimLoad == 0) {   // MP-Q6: the saved scenario clock, once the engine has set up
+                sim.scenario = (Scenario)pendScenario; sim.scoreType = (Scenario)pendScoreType; sim.scoreWait = (short)pendScore;
+                sim.disasterEvent = (Scenario)pendDisEvent; sim.disasterWait = (short)pendDisWait;
+                pendScenario = 0;
+            }
         }
         if (now - lastTickMs >= 62) lastTickMs = now;   // still behind: drop the rest
         if (sim.doAnimation && !sim.tilesAnimated)
@@ -358,7 +472,19 @@ bool App::applyToolAt(int tx, int ty) {
     const ToolDef &t = kTools[toolIdx];
     const ToolResult r = sim.doTool(t.tool, (short)tx, (short)ty);
     if (r == TOOLRESULT_NO_MONEY) { pushMessage("Insufficient funds to build that.", true); return false; }
-    if (r == TOOLRESULT_NEED_BULLDOZE) pushMessage("Area must be bulldozed first.", true);
+    if (r == TOOLRESULT_OK && t.tool != TOOL_QUERY) cityEdited = true;
+    if (r == TOOLRESULT_NEED_BULLDOZE) {
+        // MP-Q4: open water cannot be bulldozed, so do not send the player to the bulldozer
+        bool water = false;
+        const int off = (t.size >= 3) ? 1 : 0;
+        for (int y = ty - off; y < ty - off + t.size && !water; ++y)
+            for (int x = tx - off; x < tx - off + t.size; ++x) {
+                if (x < 0 || y < 0 || x >= WORLD_W || y >= WORLD_H) continue;
+                const int v = sim.map[x][y] & LOMASK;
+                if (v >= WATER_LOW && v < FIRSTRIVEDGE) { water = true; break; }
+            }
+        pushMessage(water ? "Can't build on water here." : "Area must be bulldozed first.", true);
+    }
     return true;
 }
 
@@ -381,12 +507,15 @@ void App::selectTool(int idx) {
     if (stripSlotOf(idx) < 0) extraTool = idx;
 }
 
+// MP-X2: L / R walk the seven strip tools; one step past either end opens the grid of all 16.
 void App::cycleStripTool(int dir) {
     int slot = stripSlotOf(toolIdx);
     if (slot < 0) slot = 7;
-    slot = (slot + 8 + dir) % 8;
-    selectTool(slot < 7 ? kStripTools[slot] : extraTool);
+    slot += dir;
+    if (slot < 0 || slot >= 7) { openToolGrid(); return; }
+    selectTool(kStripTools[slot]);
 }
+void App::openToolGrid() { toolPopup = true; gridSel = toolIdx; }
 
 // Taps on the bar above the map and the tool strip below it.
 void App::handleUiTap(int x, int y) {
@@ -405,10 +534,9 @@ void App::handleUiTap(int x, int y) {
         if (x < SLOT_X0) slot = 0;
         if (slot > 7) slot = 7;
         if (slot >= 0 && slot < 7) { selectTool(kStripTools[slot]); toolPopup = false; }
-        else if (slot == 7) {
-            if (toolIdx == extraTool && !toolPopup) toolPopup = true;
-            else if (toolPopup) toolPopup = false;
-            else selectTool(extraTool);
+        else if (slot == 7) {   // MP-X2: "More" always opens (or closes) the grid with one tap
+            if (toolPopup) toolPopup = false;
+            else openToolGrid();
         }
     }
 }
@@ -506,6 +634,18 @@ void App::handleMapTouch(const Input &in, uint64_t now) {
 }
 
 void App::handlePlayInput(const Input &in, uint64_t now) {
+    if (toolPopup) {
+        // the grid of all 16 tools: D-pad moves the gold ring, A picks, B / L / R / START close
+        if (in.repeat & BTN_LEFT)  gridSel = (gridSel & ~3) | ((gridSel + 3) & 3);
+        if (in.repeat & BTN_RIGHT) gridSel = (gridSel & ~3) | ((gridSel + 1) & 3);
+        if (in.repeat & BTN_UP)    gridSel = (gridSel + 12) & 15;
+        if (in.repeat & BTN_DOWN)  gridSel = (gridSel + 4) & 15;
+        if (in.down & BTN_A) { selectTool(gridSel); toolPopup = false; return; }
+        if (in.down & (BTN_B | BTN_L | BTN_R)) { toolPopup = false; if (in.down & (BTN_L | BTN_R)) shoulderUsedForPan = true; return; }
+        if (in.down & BTN_START) { toolPopup = false; mode = MODE_MENU; pmPage = 0; menuSel = 0; return; }
+        if (in.touch || tstate != T_NONE) handleMapTouch(in, now);
+        return;
+    }
     // --- cursor / camera
     int dx = 0, dy = 0;
     if (in.repeat & BTN_LEFT) dx = -1;
@@ -541,9 +681,17 @@ void App::handlePlayInput(const Input &in, uint64_t now) {
         if (!(in.held & (BTN_L | BTN_R))) shoulderUsedForPan = false;
     }
     if (in.down & BTN_B) {
-        if (toolPopup) toolPopup = false;
-        else if (toolIdx == 7) toolIdx = prevToolIdx;   // B again: back to what you had
-        else selectTool(7);
+        // MP-X3: B is "back" everywhere else, so say what it did here
+        char note[64];
+        const char *bName = platform::leftyOn() ? "D-Down" : "B";
+        if (toolIdx == 7) {
+            toolIdx = prevToolIdx;   // B again: back to what you had
+            snprintf(note, sizeof(note), "Tool: %s.", kTools[toolIdx].name);
+        } else {
+            snprintf(note, sizeof(note), "Bulldozer. %s again: back to %s.", bName, kTools[toolIdx].name);
+            selectTool(7);
+        }
+        pushMessage(note, true);
     }
     if (in.down & BTN_Y) { zoomOut = !zoomOut; centerOn(curX, curY); }
     if (in.down & BTN_X) { mode = MODE_BUDGET; budgetSel = 0; }
@@ -559,23 +707,51 @@ void App::handlePlayInput(const Input &in, uint64_t now) {
     if (in.touch || tstate != T_NONE) handleMapTouch(in, now);
 }
 
-// Two-column button grids (rule 11): 152 x 24 buttons at x 6 / 162, rows 28 apart from y0.
-// Column-major: the first `rows` items run down the left column.
-static int menuHit(int x, int y, int rows, int y0) {
-    if (y < y0 - 2 || x < 4 || x >= 316) return -1;
-    int r = (y - y0 + 2) / 28, c = x < 160 ? 0 : 1;
-    if (r >= rows) return -1;
-    return c * rows + r;
+// START menu pages (house style, claude/3ds-look-and-feel.md). Rule 11: every button is 24 px
+// tall or more, 4 px or more from its neighbours and 6 px from the screen edges.
+enum { PM_MAIN, PM_CITIES, PM_EXIT, PM_SAVEFAIL, PM_REPLACE, PM_SETTINGS, PM_DISASTERS, PM_DISASTER_ASK };
+struct PmBtn { int x, y, w, h; };
+static const char *const kPmMain[7] = { "RESUME", "MANUAL", "SAVE CITY", "LOAD CITY", "NEW CITY", "SETTINGS", "EXIT GAME" };
+static const char *const kPmCities[10] = { "New city", "Dullsville 1900", "San Francisco 1906", "Hamburg 1944",
+    "Bern 1965", "Tokyo 1957", "Detroit 1972", "Boston 2010", "Rio de Janeiro 2047", "Back" };
+static const char *const kPmDisasters[7] = { "Fire", "Flood", "Tornado", "Earthquake", "Monster", "Meltdown", "BACK" };
+static const char *const kDisasterAsk[6] = { "Start a fire?", "Start a flood?", "Start a tornado?", "Start an earthquake?",
+    "Call the monster?", "Melt down a nuclear plant?" };
+// Fills b[] with the page's buttons; returns how many. `rows` = buttons per column (for Left / Right).
+static int pmLayout(int page, PmBtn *b, int &rows) {
+    int n = 0;
+    switch (page) {
+    case PM_MAIN:       // one column of seven, y 27..219
+        rows = 7;
+        for (int i = 0; i < 7; ++i) b[n++] = { 6, 27 + i * 28, 308, 24 };
+        break;
+    case PM_CITIES:     // 2 x 5, column-major
+        rows = 5;
+        for (int i = 0; i < 10; ++i) b[n++] = { 6 + (i / 5) * 156, 32 + (i % 5) * 28, 152, 24 };
+        break;
+    case PM_SETTINGS:   // one column of three
+        rows = 3;
+        for (int i = 0; i < 3; ++i) b[n++] = { 6, 32 + i * 32, 308, 28 };
+        break;
+    case PM_DISASTERS:  // 2 x 3, column-major, and BACK on its own under them
+        rows = 3;
+        for (int i = 0; i < 6; ++i) b[n++] = { 6 + (i / 3) * 156, 32 + (i % 3) * 32, 152, 28 };
+        b[n++] = { 84, 144, 152, 28 };
+        break;
+    default:            // a question: two buttons side by side
+        rows = 1;
+        b[n++] = { 6, 124, 152, 32 };
+        b[n++] = { 162, 124, 152, 32 };
+        break;
+    }
+    return n;
 }
-static void menuButton(Screen &s, int i, int rows, int y0, const char *label, bool sel, int rr, int gg, int bb) {
-    // house style (claude/3ds-look-and-feel.md): blue face, light edge, shadow, gold focus ring
-    (void)rr; (void)gg; (void)bb;
-    const int c = i / rows, r = i % rows, x = 6 + c * 156, y = y0 + r * 28;
-    fb::fillRect(s, x + 2, y + 2, 152, 24, 20, 30, 70);
-    fb::fillRect(s, x, y, 152, 24, 40, 56, 120);
-    fb::rectOutline(s, x, y, 152, 24, 120, 150, 230);
-    if (sel) { fb::rectOutline(s, x - 2, y - 2, 156, 28, 255, 204, 64); fb::rectOutline(s, x - 3, y - 3, 158, 30, 255, 204, 64); }
-    fb::text(s, x + (152 - fb::textWidth(label)) / 2, y + 6, label, 235, 240, 250);
+static void pmButton(Screen &s, const PmBtn &r, const char *label, bool sel) {
+    fb::fillRect(s, r.x + 2, r.y + 2, r.w, r.h, 20, 30, 70);
+    fb::fillRect(s, r.x, r.y, r.w, r.h, 40, 56, 120);
+    fb::rectOutline(s, r.x, r.y, r.w, r.h, 120, 150, 230);
+    if (sel) { fb::rectOutline(s, r.x - 2, r.y - 2, r.w + 4, r.h + 4, 255, 204, 64); fb::rectOutline(s, r.x - 3, r.y - 3, r.w + 6, r.h + 6, 255, 204, 64); }
+    fb::text(s, r.x + (r.w - fb::textWidth(label)) / 2, r.y + (r.h - 13) / 2 + 1, label, 235, 240, 250);
 }
 // House frame: navy, a header bar with the title in gold, a hint strip at the bottom.
 static void houseFrame(Screen &s, const char *title, const char *hint) {
@@ -587,51 +763,118 @@ static void houseFrame(Screen &s, const char *title, const char *hint) {
     fb::fillRect(s, 0, 224, BOT_W, 1, 120, 150, 230);
     fb::text(s, (BOT_W - fb::textWidth(hint)) / 2, 226, hint, 255, 204, 64);
 }
-static const char *const kPmMain[7] = { "RESUME", "MANUAL", "SAVE CITY", "LOAD CITY", "NEW CITY...", "DISASTERS...", "EXIT GAME" };
-static const char *const kPmCities[10] = { "New city", "Dullsville 1900", "San Francisco 1906", "Hamburg 1944",
-    "Bern 1965", "Tokyo 1957", "Detroit 1972", "Boston 2010", "Rio de Janeiro 2047", "Back" };
+// the hint strip names the buttons the player really presses (left hand: the D-pad is A/B/X/Y)
+static const char *pmHint(bool main) {
+    if (platform::leftyOn()) return main ? "D-Right Select   D-Down Back   ZL Swap" : "D-Right Select   D-Down Back";
+    return main ? "A Select   B Back   ZL Swap" : "A Select   B Back";
+}
+
+// MP-Q1 / MP-Q2: ask before the city in play is replaced. kind 1: new city (arg 0) or scenario
+// (arg 1..8); kind 2: the city at citySel in the LOAD CITY list.
+void App::askReplace(int kind, int arg) {
+    askKind = kind; askArg = arg;
+    if (kind == 1 && arg == 0) snprintf(askLine1, sizeof(askLine1), "Start a new city?");
+    else if (kind == 1) snprintf(askLine1, sizeof(askLine1), "Start %s?", kScenarioNames[arg]);
+    else snprintf(askLine1, sizeof(askLine1), "Load this city?");
+    mode = MODE_MENU; pmPage = PM_REPLACE; menuSel = 1;   // focus on NO
+}
+
+void App::doReplace() {
+    if (!keepCurrentCity()) {   // could not be written: the city in play stays
+        pushMessage("Save failed - your city was not replaced.", true);
+        mode = MODE_PLAY; pmPage = PM_MAIN;
+        return;
+    }
+    if (askKind == 1) {
+        if (askArg == 0) newCity(0); else loadScenario(askArg);
+    } else if (citySel >= 0 && citySel < nCities) {
+        if (loadCity(cityPaths[citySel])) pushMessage(pendScenario ? "City loaded. The scenario goes on." : "City loaded.", false);
+        else pushMessage("Could not load that city file.", true);
+    }
+    mode = MODE_PLAY; pmPage = PM_MAIN; menuSel = 0;
+}
 
 void App::handleMenuInput(const Input &in) {
-    // START menu, house style. Page 0: main list (2 x 4, column-major), page 1: new city and
-    // scenarios (2 x 5), page 2: exit question (YES / NO, NO chosen).
-    const int rows = pmPage == 0 ? 4 : pmPage == 1 ? 5 : 1;
-    const int items = pmPage == 0 ? 7 : pmPage == 1 ? 10 : 2;   // pages 2 and 3: YES / NO
+    PmBtn b[12]; int rows = 1;
+    const int items = pmLayout(pmPage, b, rows);
     if (in.repeat & BTN_UP) menuSel = (menuSel + items - 1) % items;
     if (in.repeat & BTN_DOWN) menuSel = (menuSel + 1) % items;
     if (in.repeat & (BTN_LEFT | BTN_RIGHT)) {
         int n = menuSel + ((in.repeat & BTN_RIGHT) ? rows : -rows);
-        if (n >= 0 && n < items) menuSel = n;
+        if (rows == 1 && items == 2) n = (in.repeat & BTN_RIGHT) ? 1 : 0;
+        if (n >= 0 && n < items && !(pmPage == PM_DISASTERS && (n == 6 || menuSel == 6))) menuSel = n;
     }
     if (in.down & (BTN_B | BTN_START)) {
-        if (pmPage == 0 || pmPage == 3) { mode = MODE_PLAY; tstate = T_DONE; pmPage = 0; }   // save failed: back to the city
-        else { menuSel = pmPage == 1 ? 4 : 6; pmPage = 0; }
+        // B always goes one step back (MP-X4); START leaves the menu
+        tstate = T_DONE;
+        if (in.down & BTN_START) { mode = MODE_PLAY; pmPage = PM_MAIN; return; }
+        switch (pmPage) {
+        case PM_MAIN: case PM_SAVEFAIL: mode = MODE_PLAY; pmPage = PM_MAIN; break;   // save failed: back to the city
+        case PM_CITIES: pmPage = PM_MAIN; menuSel = 4; break;
+        case PM_SETTINGS: pmPage = PM_MAIN; menuSel = 5; break;
+        case PM_EXIT: pmPage = PM_MAIN; menuSel = 6; break;
+        case PM_DISASTERS: pmPage = PM_SETTINGS; menuSel = 1; break;
+        case PM_DISASTER_ASK: pmPage = PM_DISASTERS; menuSel = askArg; break;
+        case PM_REPLACE:
+            if (askKind == 2) { mode = MODE_LOADCITY; pmPage = PM_MAIN; }
+            else { pmPage = PM_CITIES; menuSel = askArg; }
+            break;
+        }
         return;
     }
     bool pick = (in.down & BTN_A) != 0;
     if (in.touchDown) {
-        const int i = menuHit(in.touchX, in.touchY, rows, pmPage >= 2 ? 120 : 32);
-        if (i >= 0 && i < items) { menuSel = i; pick = true; }
+        for (int i = 0; i < items; ++i)
+            if (in.touchX >= b[i].x - 2 && in.touchX < b[i].x + b[i].w + 2 && in.touchY >= b[i].y - 2 && in.touchY < b[i].y + b[i].h + 2) {
+                menuSel = i; pick = true; break;
+            }
     }
     if (!pick) return;
     tstate = T_DONE;
-    if (pmPage == 2) {
+    switch (pmPage) {
+    case PM_EXIT:
         if (menuSel == 0) {   // never lose progress: the city is saved before the game ends
             if (saveCity()) quitRequested = true;
-            else { pmPage = 3; menuSel = 1; return; }   // MP-02: it failed, ask (focus on NO)
+            else { pmPage = PM_SAVEFAIL; menuSel = 1; return; }   // MP-02: it failed, ask (focus on NO)
         }
-        pmPage = 0; menuSel = 6;
+        pmPage = PM_MAIN; menuSel = 6;
         return;
-    }
-    if (pmPage == 3) {
+    case PM_SAVEFAIL:
         if (menuSel == 0) quitRequested = true;          // EXIT ANYWAY
-        else { mode = MODE_PLAY; tstate = T_DONE; }       // NO: back to the city
-        pmPage = 0; menuSel = 6;
+        else mode = MODE_PLAY;                           // NO: back to the city
+        pmPage = PM_MAIN; menuSel = 6;
         return;
-    }
-    if (pmPage == 1) {
-        if (menuSel == 0) { newCity(0); mode = MODE_PLAY; }
-        else if (menuSel <= 8) { loadScenario(menuSel); mode = MODE_PLAY; }
-        pmPage = 0; menuSel = 4;
+    case PM_REPLACE:
+        if (menuSel == 0) doReplace();
+        else if (askKind == 2) { mode = MODE_LOADCITY; pmPage = PM_MAIN; }
+        else { pmPage = PM_CITIES; menuSel = askArg; }
+        return;
+    case PM_CITIES:
+        if (menuSel <= 8) askReplace(1, menuSel);
+        else { pmPage = PM_MAIN; menuSel = 4; }
+        return;
+    case PM_SETTINGS:
+        if (menuSel == 0) platform::setLefty(!platform::leftyOn());
+        else if (menuSel == 1) { pmPage = PM_DISASTERS; menuSel = 6; }
+        else { pmPage = PM_MAIN; menuSel = 5; }
+        return;
+    case PM_DISASTERS:
+        if (menuSel < 6) { askArg = menuSel; pmPage = PM_DISASTER_ASK; menuSel = 1; }   // MP-Q3: ask, focus on NO
+        else { pmPage = PM_SETTINGS; menuSel = 1; }
+        return;
+    case PM_DISASTER_ASK:
+        if (menuSel == 0) {
+            switch (askArg) {
+            case 0: sim.makeFire(); break;
+            case 1: sim.makeFlood(); break;
+            case 2: sim.makeTornado(); break;
+            case 3: sim.makeEarthquake(); break;
+            case 4: sim.makeMonster(); break;
+            case 5: sim.makeMeltdown(); break;
+            }
+            cityEdited = true;
+            mode = MODE_PLAY; pmPage = PM_MAIN;
+        } else { pmPage = PM_DISASTERS; menuSel = askArg; }
         return;
     }
     switch (menuSel) {
@@ -644,34 +887,9 @@ void App::handleMenuInput(const Input &in) {
         break;
     }
     case 3: scanCities(); citySel = 0; mode = MODE_LOADCITY; break;
-    case 4: pmPage = 1; menuSel = 0; break;
-    case 5: mode = MODE_DISASTERS; menuSel = 0; break;
-    case 6: pmPage = 2; menuSel = 1; break;
-    }
-}
-
-void App::handleDisasterInput(const Input &in) {
-    const int items = 7;
-    if (in.repeat & BTN_UP) menuSel = (menuSel + items - 1) % items;
-    if (in.repeat & BTN_DOWN) menuSel = (menuSel + 1) % items;
-    if (in.down & (BTN_B | BTN_START)) { mode = MODE_PLAY; tstate = T_DONE; return; }
-    bool pick = (in.down & BTN_A) != 0;
-    if (in.touchDown) {
-        const int i = menuHit(in.touchX, in.touchY, 4, 32);   // 2 x 4 grid, see drawDisasters
-        if (i >= 0 && i < items) { menuSel = i; pick = true; }
-    }
-    if (pick) {
-        tstate = T_DONE;
-        switch (menuSel) {
-        case 0: sim.makeFire(); break;
-        case 1: sim.makeFlood(); break;
-        case 2: sim.makeTornado(); break;
-        case 3: sim.makeEarthquake(); break;
-        case 4: sim.makeMonster(); break;
-        case 5: sim.makeMeltdown(); break;
-        default: break;
-        }
-        mode = MODE_PLAY;
+    case 4: pmPage = PM_CITIES; menuSel = 0; break;
+    case 5: pmPage = PM_SETTINGS; menuSel = 0; break;
+    case 6: pmPage = PM_EXIT; menuSel = 1; break;
     }
 }
 
@@ -703,6 +921,7 @@ void App::handleBudgetInput(const Input &in) {
         if (sim.policePercent < 0) sim.policePercent = 0; if (sim.policePercent > 1) sim.policePercent = 1;
         if (sim.firePercent < 0) sim.firePercent = 0; if (sim.firePercent > 1) sim.firePercent = 1;
         sim.updateFundEffects();
+        cityEdited = true;
     }
     if (in.down & (BTN_A | BTN_B | BTN_X | BTN_START)) { mode = MODE_PLAY; tstate = T_DONE; }
 }
@@ -715,7 +934,6 @@ void App::frame(const Input &in) {
     case MODE_PLAY: handlePlayInput(in, now); break;
     case MODE_MENU: handleMenuInput(in); break;
     case MODE_BUDGET: handleBudgetInput(in); break;
-    case MODE_DISASTERS: handleDisasterInput(in); break;
     case MODE_HELP: handleHelpInput(in); break;
     case MODE_LOADCITY: handleLoadCityInput(in); break;
     case MODE_QUERY: if ((in.down & (BTN_A | BTN_B)) || in.touchDown) { mode = MODE_PLAY; query.valid = false; tstate = T_DONE; } break;
@@ -823,6 +1041,15 @@ int App::overlayValue(int tx, int ty) const {
 
 // Heat ramp: blue (low) -> green -> yellow -> red (high). Growth uses a
 // diverging ramp around 128 instead.
+// MP-U7: a tile takes the overlay colour only when it has something to show; empty land and
+// water keep their own look, so the city's outline stays readable under an overlay
+bool App::overlayShows(int v) const {
+    if (v < 0) return false;
+    if (overlay == OV_POWER) return true;
+    if (overlay == OV_GROWTH) return abs(v - 128) > 6;
+    return v > 12;
+}
+
 void App::overlayColour(int v, uint8_t *rgb) const {
     if (overlay == OV_GROWTH) {
         const int d = v - 128;
@@ -891,7 +1118,7 @@ void App::drawOverlayTint(Screen &s, const View &v, int dx) {
         for (int tx = c0; tx <= c1; ++tx) {
             if (tx < 0 || tx >= WORLD_W) continue;
             const int val = overlayValue(tx, ty);
-            if (val < 0) continue;
+            if (!overlayShows(val)) continue;
             uint8_t rgb[3]; overlayColour(val, rgb);
             const int sx = tx * ts - v.ox + dx, sy = v.sy0 + ty * ts - v.oy;
             for (int y = 0; y < ts; ++y) {
@@ -1032,21 +1259,22 @@ void App::drawTopHud(Screen &s) {
     snprintf(line, sizeof(line), "Pop %s", num);
     fb::textB(s, narrow ? 136 : 184, 2, line, 230, 230, 230);
     const char *spd = sim.simSpeed == 0 ? (narrow ? "PAUSE" : "PAUSED") : sim.simSpeed == 1 ? "Slow" : sim.simSpeed == 2 ? (narrow ? "Med" : "Medium") : "Fast";
-    fb::textB(s, narrow ? TW - 92 : 290, 2, spd, sim.simSpeed == 0 ? 255 : 170, sim.simSpeed == 0 ? 120 : 220, sim.simSpeed == 0 ? 120 : 170);
+    fb::textB(s, narrow ? TW - 104 : 284, 2, spd, sim.simSpeed == 0 ? 255 : 170, sim.simSpeed == 0 ? 120 : 220, sim.simSpeed == 0 ? 120 : 170);
     // R C I demand: small bars around a centre line
     float rd, cd, id;
     sim.getDemands(&rd, &cd, &id);
     const float d[3] = { rd, cd, id };
-    static const uint8_t col[3][3] = { {80, 220, 80}, {90, 140, 255}, {250, 210, 60} };
+    // MP-U3: white letters and 8-px bars in bright zone colours, so the demand reads at a glance
+    static const uint8_t col[3][3] = { {110, 240, 110}, {120, 180, 255}, {255, 204, 64} };
     static const char *lab[3] = { "R", "C", "I" };
     for (int i = 0; i < 3; ++i) {
-        const int x = TW - 48 + i * 16, mid = 9;
-        fb::text(s, x - 7, 3, lab[i], col[i][0], col[i][1], col[i][2]);
-        fb::fillRect(s, x, 1, 6, 16, 40, 40, 48);
-        fb::fillRect(s, x, mid, 6, 1, 120, 120, 130);
+        const int x = TW - 56 + i * 19, mid = 9;
+        fb::textB(s, x - 8, 2, lab[i], 255, 255, 255);
+        fb::fillRect(s, x, 1, 8, 16, 52, 56, 72);
         int h = (int)(d[i] * 8); if (h > 8) h = 8; if (h < -8) h = -8;
-        if (h > 0) fb::fillRect(s, x, mid - h, 6, h, col[i][0], col[i][1], col[i][2]);
-        else if (h < 0) fb::fillRect(s, x, mid + 1, 6, -h, col[i][0] / 2, col[i][1] / 2, col[i][2] / 2);
+        if (h > 0) fb::fillRect(s, x, mid - h, 8, h, col[i][0], col[i][1], col[i][2]);
+        else if (h < 0) fb::fillRect(s, x, mid + 1, 8, -h, 255, 110, 90);
+        fb::fillRect(s, x - 1, mid, 10, 1, 255, 255, 255);
     }
 
     // minimap, top-right (every 2nd tile: 60 x 50)
@@ -1117,7 +1345,9 @@ void App::drawMinimap(Screen &s, int x0, int y0, int step) {
         for (int x = 0; x < WORLD_W; x += step) {
             uint8_t *p = s.px(x0 + x / step, y0 + y / step);
             const int ov = overlay != OV_NONE ? overlayValue(x, y) : -1;
-            if (ov >= 0) { overlayColour(ov, p); continue; }
+            // MP-U7: only tiles that have something to show take the overlay colour; the rest stay
+            // (dimmed) land and water, so the city's outline is still there
+            if (overlayShows(ov)) { overlayColour(ov, p); continue; }
             const unsigned short v = sim.map[x][y];
             const int t = v & LOMASK;
             const uint8_t *c = kMiniLand;
@@ -1127,7 +1357,7 @@ void App::drawMinimap(Screen &s, int x0, int y0, int step) {
             else if (t >= ROADBASE && t < RESBASE) c = kMiniRoad;
             else if (t >= PORTBASE && t <= LASTZONE) c = kMiniBig;
             else if (t >= RESBASE) c = kMiniZone;
-            const int sh = overlay != OV_NONE ? 2 : 0;    // terrain dimmed under an overlay
+            const int sh = overlay != OV_NONE ? 1 : 0;    // terrain dimmed under an overlay
             p[0] = c[0] >> sh; p[1] = c[1] >> sh; p[2] = c[2] >> sh;
         }
     }
@@ -1163,7 +1393,7 @@ void App::drawBottomBar(Screen &s) {
     const int m = (sim.cityMonth >= 0 && sim.cityMonth < 12) ? (int)sim.cityMonth : 0;
     snprintf(line, sizeof(line), "%s %ld", kMonths[m], (long)sim.cityYear);
     fb::text(s, 82, 11, line, 210, 210, 210);
-    static const char *sp[4] = { "||", ">", ">>", ">>>" };
+    static const char *sp[4] = { "Pause", "Slow", "Med", "Fast" };   // MP-X6: the same words as the top screen
     const int si = (sim.simSpeed >= 0 && sim.simSpeed < 4) ? (int)sim.simSpeed : 0;
     fb::fillRect(s, 134, 6, 40, 24, si == 0 ? 110 : 40, si == 0 ? 40 : 60, si == 0 ? 40 : 50);
     fb::textB(s, 134 + (40 - fb::textWidth(sp[si], fb::FONT_BOLD)) / 2, 11, sp[si], 240, 240, 240);
@@ -1181,14 +1411,24 @@ void App::drawBottomBar(Screen &s) {
 void App::drawToolStrip(Screen &s) {
     fb::fillRect(s, 0, STRIP_Y, BOT_W, STRIP_H, 16, 16, 22);
     for (int slot = 0; slot < 8; ++slot) {
-        const int ti = slot < 7 ? kStripTools[slot] : extraTool;
+        // MP-X2: the last slot is "More" (one tap: all 16 tools). While a tool from the grid is in
+        // hand the slot shows that tool, lit, so the strip always shows what is selected.
+        const bool more = slot == 7 && (stripSlotOf(toolIdx) >= 0 || toolPopup);
+        const int ti = slot < 7 ? kStripTools[slot] : toolIdx;
         const int x = SLOT_X0 + slot * SLOT_STEP, by = STRIP_Y + 4, bh = STRIP_H - 10;   // 204..234
-        const bool sel = (ti == toolIdx);
+        const bool sel = more ? toolPopup : (ti == toolIdx);
         fb::fillRect(s, x, by, SLOT_W, bh, sel ? 90 : 38, sel ? 90 : 38, sel ? 150 : 50);
-        drawIcon(s, x + 1, by + 1, ti, SLOT_W - 2, 4, 16);
-        fb::text(s, x + SLOT_W / 2 - fb::textWidth(kShortNames[ti]) / 2, by + 16, kShortNames[ti],
-                 sel ? 255 : 210, sel ? 255 : 210, sel ? 160 : 210);
-        if (slot == 7) {   // "More": a small ▲ marks the grid
+        if (more) {
+            for (int gy = 0; gy < 3; ++gy)          // a little 4 x 3 grid of squares
+                for (int gx = 0; gx < 4; ++gx)
+                    fb::fillRect(s, x + 6 + gx * 6, by + 2 + gy * 5, 4, 3, 255, 204, 64);
+            fb::text(s, x + SLOT_W / 2 - fb::textWidth("More") / 2, by + 16, "More", sel ? 255 : 235, sel ? 255 : 240, sel ? 160 : 250);
+        } else {
+            drawIcon(s, x + 1, by + 1, ti, SLOT_W - 2, 4, 16);
+            fb::text(s, x + SLOT_W / 2 - fb::textWidth(kShortNames[ti]) / 2, by + 16, kShortNames[ti],
+                     sel ? 255 : 210, sel ? 255 : 210, sel ? 160 : 210);
+        }
+        if (slot == 7 && !more) {   // a small ▲: tap again for the grid
             fb::fillRect(s, x + SLOT_W - 12, by, 12, 9, 70, 70, 110);
             for (int r = 0; r < 4; ++r) fb::fillRect(s, x + SLOT_W - 6 - r, by + 2 + r, 1 + 2 * r, 1, 255, 255, 200);
         }
@@ -1211,6 +1451,7 @@ void App::drawToolPopup(Screen &s) {
         fb::text(s, x + POP_W - fb::textWidth(line), y + 6, line, 200, 230, 200);
         fb::text(s, x + 5, y + 24, kTools[i].name, 235, 235, 235);
         if (sel) fb::rectOutline(s, x + 2, y + 2, POP_W, POP_H, 255, 255, 120);
+        if (i == gridSel) { fb::rectOutline(s, x, y, POP_W + 4, POP_H + 4, 255, 204, 64); fb::rectOutline(s, x + 1, y + 1, POP_W + 2, POP_H + 2, 255, 204, 64); }
     }
 }
 
@@ -1236,7 +1477,6 @@ void App::drawBottom() {
 
     if (mode == MODE_BUDGET) drawBudget(s);
     else if (mode == MODE_MENU) drawMenu(s);
-    else if (mode == MODE_DISASTERS) drawDisasters(s);
 }
 
 void App::drawBudget(Screen &s) {
@@ -1271,43 +1511,56 @@ void App::drawBudget(Screen &s) {
 }
 
 void App::drawMenu(Screen &s) {
-    if (pmPage == 3) {
-        houseFrame(s, "SAVE FAILED", "A Select   B Back");
-        const char *q = "The city could not be saved.", *q2 = "Is the SD card full? Exit anyway?";
-        fb::textB(s, (BOT_W - fb::textWidth(q, fb::FONT_BOLD)) / 2, 64, q, 235, 240, 250);
-        fb::text(s, (BOT_W - fb::textWidth(q2)) / 2, 86, q2, 170, 185, 225);
-        menuButton(s, 0, 1, 120, "EXIT ANYWAY", menuSel == 0, 0, 0, 0);
-        menuButton(s, 1, 1, 120, "NO", menuSel == 1, 0, 0, 0);
-        return;
+    PmBtn b[12]; int rows = 1;
+    const int items = pmLayout(pmPage, b, rows);
+    const char *q = nullptr, *q2 = nullptr, *q3 = nullptr, *yes = "YES";
+    const char *title = "MENU";
+    switch (pmPage) {
+    case PM_SAVEFAIL: title = "SAVE FAILED"; q = "The city could not be saved."; q2 = "Is the SD card full? Exit anyway?"; yes = "EXIT ANYWAY"; break;
+    case PM_EXIT: title = "EXIT GAME"; q = "Exit Micropolis?"; q2 = "Your city is saved first."; break;
+    case PM_REPLACE:
+        title = askKind == 2 ? "LOAD CITY" : "NEW CITY"; q = askLine1;
+        if (askKind == 2 && citySel >= 0 && citySel < nCities) q2 = cityNames[citySel];
+        q3 = cityEdited ? "Your city is kept: LOAD CITY lists it." : "Nothing built in this city yet: it is not kept.";
+        break;
+    case PM_DISASTER_ASK: title = "DISASTERS"; q = kDisasterAsk[askArg % 6]; q2 = "It strikes your city at once."; break;
+    case PM_CITIES: title = "NEW CITY"; break;
+    case PM_SETTINGS: title = "SETTINGS"; break;
+    case PM_DISASTERS: title = "DISASTERS"; break;
     }
-    if (pmPage == 2) {
-        houseFrame(s, "EXIT GAME", "A Select   B Back");
-        const char *q = "Exit Micropolis?", *q2 = "Your city is saved first.";
-        fb::textB(s, (BOT_W - fb::textWidth(q, fb::FONT_BOLD)) / 2, 64, q, 235, 240, 250);
-        fb::text(s, (BOT_W - fb::textWidth(q2)) / 2, 86, q2, 170, 185, 225);
-        menuButton(s, 0, 1, 120, "YES", menuSel == 0, 0, 0, 0);
-        menuButton(s, 1, 1, 120, "NO", menuSel == 1, 0, 0, 0);
-        return;
-    }
-    if (pmPage == 1) {
-        houseFrame(s, "NEW CITY", "A Select   B Back");
-        for (int i = 0; i < 10; ++i) menuButton(s, i, 5, 32, kPmCities[i], i == menuSel, 0, 0, 0);
-        return;
-    }
-    houseFrame(s, "MENU", "A Select   B Back   ZL Swap");
-    {   // port version (git describe of micropolis-3ds), right of the title
+    houseFrame(s, title, pmHint(pmPage == PM_MAIN));
+    if (pmPage == PM_MAIN) {   // port version (git describe of micropolis-3ds), right of the title
         const char *v = "Build " PORT_VERSION;
         fb::text(s, BOT_W - 8 - fb::textWidth(v), 7, v, 170, 185, 225);
     }
-    for (int i = 0; i < 7; ++i) menuButton(s, i, 4, 32, kPmMain[i], i == menuSel, 0, 0, 0);
-}
-
-void App::drawDisasters(Screen &s) {
-    fb::fillRect(s, 0, 0, BOT_W, 32 + 4 * 28 + 6, 36, 20, 20);
-    fb::rectOutline(s, 0, 0, BOT_W, 32 + 4 * 28 + 6, 220, 180, 180);
-    fb::textB(s, 8, 10, "DISASTERS", 255, 200, 200);
-    static const char *items[7] = { "Fire", "Flood", "Tornado", "Earthquake", "Monster", "Meltdown", "Back" };
-    for (int i = 0; i < 7; ++i) menuButton(s, i, 4, 32, items[i], i == menuSel, 100, 60, 60);
+    if (q) {
+        fb::textB(s, (BOT_W - fb::textWidth(q, fb::FONT_BOLD)) / 2, 56, q, 235, 240, 250);
+        if (q2) fb::text(s, (BOT_W - fb::textWidth(q2)) / 2, 78, q2, q3 ? 235 : 170, q3 ? 240 : 185, q3 ? 250 : 225);
+        if (q3) fb::text(s, (BOT_W - fb::textWidth(q3)) / 2, 98, q3, 170, 185, 225);
+        pmButton(s, b[0], yes, menuSel == 0);
+        pmButton(s, b[1], "NO", menuSel == 1);
+        return;
+    }
+    for (int i = 0; i < items; ++i) {
+        const char *label = "";
+        switch (pmPage) {
+        case PM_MAIN: label = kPmMain[i]; break;
+        case PM_CITIES: label = kPmCities[i]; break;
+        case PM_SETTINGS: label = i == 0 ? (platform::leftyOn() ? "LEFT HAND: ON" : "LEFT HAND: OFF") : i == 1 ? "DISASTERS..." : "BACK"; break;
+        case PM_DISASTERS: label = kPmDisasters[i]; break;
+        }
+        pmButton(s, b[i], label, i == menuSel);
+    }
+    if (pmPage == PM_SETTINGS) {
+        const char *n1 = "Left hand: the D-Pad and A/B/X/Y swap jobs,";
+        const char *n2 = "so the stylus can be held in the left hand.";
+        fb::text(s, (BOT_W - fb::textWidth(n1)) / 2, 140, n1, 170, 185, 225);
+        fb::text(s, (BOT_W - fb::textWidth(n2)) / 2, 156, n2, 170, 185, 225);
+    }
+    if (pmPage == PM_DISASTERS) {
+        const char *n1 = "Each one asks before it starts.";
+        fb::text(s, (BOT_W - fb::textWidth(n1)) / 2, 190, n1, 170, 185, 225);
+    }
 }
 
 // ---- Manual (docs/manual.txt -> assets/manual.h) ---------------------------
@@ -1341,15 +1594,57 @@ void App::drawHelp(Screen &s) {
 }
 
 // ---- Load city ------------------------------------------------------------
+// MP-X5: a row says what the city is (date, people, money), read from the file's header, not its
+// file name. The classic .cty layout: six 480-byte histories, then 120 big-endian shorts of
+// "misc" values (2-4: R, C, I population; 8-9: city time; 50-51: funds), then the map.
+static bool cityInfo(const char *path, char *out, size_t n) {
+    FILE *f = fopen(path, "rb");
+    if (!f) return false;
+    unsigned char h[240];
+    const bool ok = fseek(f, 6 * 480, SEEK_SET) == 0 && fread(h, 1, sizeof(h), f) == sizeof(h);
+    fclose(f);
+    if (!ok) return false;
+    #define MISC(i) ((int)(short)((h[(i) * 2] << 8) | h[(i) * 2 + 1]))
+    const long time = ((long)(unsigned short)MISC(8) << 16) | (unsigned short)MISC(9);
+    const long funds = (long)(int32_t)(((uint32_t)(unsigned short)MISC(50) << 16) | (unsigned short)MISC(51));
+    const long pop = ((long)MISC(2) + ((long)MISC(3) + MISC(4)) * 8L) * 20L;
+    #undef MISC
+    static const char *mon[12] = { "Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec" };
+    char a[24], b[24];
+    fmtThousands(a, sizeof(a), pop < 0 ? 0 : pop);
+    fmtThousands(b, sizeof(b), funds < 0 ? 0 : funds);
+    const long t = time < 0 ? 0 : time;
+    snprintf(out, n, "%s %ld, pop %s, $%s", mon[(t % 48) / 4], 1900 + t / 48, a, b);
+    return true;
+}
+
 void App::scanCities() {
     nCities = 0;
     hasAutosave = false;
-    char dir[256];
+    char dir[256], info[72];
     {
-        snprintf(dir, sizeof(dir), "%s/autosave.cty", platform::saveDir());
-        FILE *f = fopen(dir, "rb");
-        if (f) { fclose(f); hasAutosave = true; snprintf(cityNames[nCities++], sizeof(cityNames[0]), "autosave.cty  (last save)"); }
+        snprintf(cityPaths[0], sizeof(cityPaths[0]), "%s/autosave.cty", platform::saveDir());
+        if (cityInfo(cityPaths[0], info, sizeof(info))) {
+            hasAutosave = true;
+            snprintf(cityNames[nCities++], sizeof(cityNames[0]), "Last save: %s", info);
+        }
     }
+    // the cities the game kept when they were replaced, newest first
+    snprintf(dir, sizeof(dir), "%s/kept", platform::saveDir());
+    if (DIR *d = opendir(dir)) {
+        int nums[80], n = 0;
+        struct dirent *e;
+        while ((e = readdir(d))) { const int k = keptNumber(e->d_name); if (k >= 0 && n < 80) nums[n++] = k; }
+        closedir(d);
+        std::sort(nums, nums + n);
+        for (int i = n - 1; i >= 0 && nCities < kMaxCities - 1; --i) {
+            snprintf(cityPaths[nCities], sizeof(cityPaths[0]), "%s/kept-%04d.cty", dir, nums[i]);
+            if (!cityInfo(cityPaths[nCities], info, sizeof(info))) continue;
+            snprintf(cityNames[nCities], sizeof(cityNames[0]), "Earlier: %s", info);
+            ++nCities;
+        }
+    }
+    const int first = nCities;
     snprintf(dir, sizeof(dir), "%s/cities", platform::saveDir());
     DIR *d = opendir(dir);
     if (!d) return;
@@ -1358,64 +1653,60 @@ void App::scanCities() {
         const char *n = e->d_name;
         const size_t len = strlen(n);
         if (len < 5 || strcasecmp(n + len - 4, ".cty") != 0) continue;
-        snprintf(cityNames[nCities], sizeof(cityNames[0]), "%s", n);
+        if ((size_t)snprintf(cityPaths[nCities], sizeof(cityPaths[0]), "%s/%s", dir, n) >= sizeof(cityPaths[0])) continue;   // name too long to open
+        snprintf(cityNames[nCities], sizeof(cityNames[0]), "%.*s", (int)(len - 4), n);
+        if (strlen(n) - 4 > 49) memcpy(cityNames[nCities] + 46, "...", 4);   // 49 x 6 px fits 296
         ++nCities;
     }
     closedir(d);
-    // simple insertion sort by name (the autosave stays first)
-    const int first = hasAutosave ? 1 : 0;
+    // simple insertion sort by name (the game's own saves stay first)
     for (int i = first + 1; i < nCities; ++i)
         for (int j = i; j > first && strcasecmp(cityNames[j - 1], cityNames[j]) > 0; --j) {
-            char tmp[40]; memcpy(tmp, cityNames[j], 40); memcpy(cityNames[j], cityNames[j - 1], 40); memcpy(cityNames[j - 1], tmp, 40);
+            std::swap_ranges(cityNames[j], cityNames[j] + sizeof(cityNames[0]), cityNames[j - 1]);
+            std::swap_ranges(cityPaths[j], cityPaths[j] + sizeof(cityPaths[0]), cityPaths[j - 1]);
         }
 }
 
 void App::handleLoadCityInput(const Input &in) {
-    if (in.down & (BTN_B | BTN_START)) { mode = MODE_MENU; pmPage = 0; menuSel = 3; return; }
-    if (in.touchDown && in.touchY >= 200 && in.touchX >= 240) { mode = MODE_MENU; pmPage = 0; menuSel = 3; return; }
+    if (in.down & BTN_START) { mode = MODE_PLAY; pmPage = PM_MAIN; tstate = T_DONE; return; }
+    if (in.down & BTN_B) { mode = MODE_MENU; pmPage = PM_MAIN; menuSel = 3; return; }
+    if (in.touchDown && in.touchY >= 194 && in.touchX >= 236) { mode = MODE_MENU; pmPage = PM_MAIN; menuSel = 3; return; }
     if (nCities == 0) return;
     if (in.repeat & BTN_UP) citySel = (citySel + nCities - 1) % nCities;
     if (in.repeat & BTN_DOWN) citySel = (citySel + 1) % nCities;
+    if (in.repeat & BTN_LEFT) citySel = citySel >= 6 ? citySel - 6 : citySel;
+    if (in.repeat & BTN_RIGHT) citySel = citySel + 6 < nCities ? citySel + 6 : citySel;
     bool pick = (in.down & BTN_A) != 0;
     if (in.touchDown && in.touchY >= 28 && in.touchY < 28 + 6 * 28) {
         const int i = (citySel / 6) * 6 + (in.touchY - 28) / 28;
         if (i < nCities) { citySel = i; pick = true; }
     }
-    if (pick) {
-        tstate = T_DONE;
-        char path[320];
-        if (hasAutosave && citySel == 0) snprintf(path, sizeof(path), "%s/autosave.cty", platform::saveDir());
-        else snprintf(path, sizeof(path), "%s/cities/%s", platform::saveDir(), cityNames[citySel]);
-        if (loadCity(path)) { pushMessage("City loaded.", false); mode = MODE_PLAY; }
-        else pushMessage("Could not load that city file.", true);
-    }
+    if (pick) { tstate = T_DONE; askReplace(2, citySel); }   // MP-Q2: ask first
 }
 
 void App::drawLoadCity(Screen &s) {
-    fb::fillRect(s, 0, 0, BOT_W, BOT_H, 18, 22, 34);
-    fb::rectOutline(s, 0, 0, BOT_W, BOT_H, 120, 130, 170);
-    fb::textB(s, 8, 6, "LOAD CITY", 255, 255, 180);
+    houseFrame(s, "LOAD CITY", platform::leftyOn() ? "D-Right Load   D-Down Back" : "A Load   B Back");
     if (nCities == 0) {
-        fb::text(s, 8, 30, "No .cty files found in", 220, 220, 220);
-        fb::text(s, 8, 44, "sdmc:/3ds/micropolis/cities/", 200, 220, 255);
-        fb::text(s, 8, 66, "Copy Micropolis .cty city files there.", 180, 180, 190);
-        fb::text(s, 8, 80, "(Menu > Save city writes autosave.cty.)", 160, 160, 170);
+        fb::text(s, 8, 34, "No saved city yet.", 235, 240, 250);
+        fb::text(s, 8, 56, "SAVE CITY in the menu saves the city in play.", 170, 185, 225);
+        fb::text(s, 8, 72, "Classic .cty city files can be copied to", 170, 185, 225);
+        fb::text(s, 8, 86, "sdmc:/3ds/micropolis/cities/", 200, 220, 255);
     } else {
         const int perPage = 6, first = (citySel / perPage) * perPage;
         for (int i = first; i < nCities && i < first + perPage; ++i) {
             const int y = 30 + (i - first) * 28;
-            fb::fillRect(s, 6, y, BOT_W - 12, 24, i == citySel ? 60 : 36, i == citySel ? 60 : 40, i == citySel ? 100 : 56);
-            char nm[64]; snprintf(nm, sizeof(nm), "%s", cityNames[i]);
-            if ((int)strlen(nm) > 49) { nm[46] = '.'; nm[47] = '.'; nm[48] = '.'; nm[49] = 0; }   // 49 x 6 px fits 296
-            fb::text(s, 12, y + 6, nm, 230, 230, 230);
+            fb::fillRect(s, 6, y, BOT_W - 12, 24, 40, 56, 120);
+            fb::rectOutline(s, 6, y, BOT_W - 12, 24, 120, 150, 230);
+            if (i == citySel) { fb::rectOutline(s, 4, y - 2, BOT_W - 8, 28, 255, 204, 64); fb::rectOutline(s, 5, y - 1, BOT_W - 10, 26, 255, 204, 64); }
+            fb::text(s, 12, y + 6, cityNames[i], 235, 240, 250);
         }
-        char line[48];
-        snprintf(line, sizeof(line), "%d/%d", citySel + 1, nCities);
-        fb::text(s, BOT_W - 8 - fb::textWidth(line), 6, line, 140, 140, 160);
+        char line[64];
+        if (nCities > perPage) snprintf(line, sizeof(line), "%d of %d   D-Pad left / right: page", citySel + 1, nCities);
+        else snprintf(line, sizeof(line), "%d of %d", citySel + 1, nCities);
+        fb::text(s, 8, 204, line, 170, 185, 225);
     }
-    fb::text(s, 8, 212, "Tap a city or A: load", 140, 140, 160);
-    fb::fillRect(s, 242, 204, 72, 30, 60, 60, 100);
-    fb::textB(s, 242 + (72 - fb::textWidth("Back", fb::FONT_BOLD)) / 2, 213, "Back", 255, 255, 200);
+    const PmBtn back = { 242, 196, 72, 24 };
+    pmButton(s, back, "BACK", false);
 }
 
 void App::render(float slider) {

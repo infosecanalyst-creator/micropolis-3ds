@@ -45,7 +45,7 @@ value / Traffic / Density / Fire cover / Police cover / Growth, auto-scaled,
 tinted over both maps and the minimap.
 
 Every menu, the budget (−/+ buttons), load-city list and the in-game manual
-(Start > How to play; tap a chapter on the contents page) work by touch as
+(Start > MANUAL; tap a section) work by touch as
 well as buttons.
 
 ## Controls
@@ -58,16 +58,19 @@ well as buttons.
 | Circle pad | scroll the map |
 | A | apply tool (hold A + D-pad to paint) |
 | B | bulldozer; B again returns to the previous tool |
-| L / R | previous / next tool in the strip |
+| L / R | previous / next tool in the strip; past either end: the grid of all 16 tools |
 | Y | zoom the touch map out / in (top close-up follows) |
 | X | budget (tax rate, road/police/fire funding) |
-| Start | menu: new city, the 8 scenarios, load, disasters, save, manual |
+| Start | menu: RESUME, MANUAL, SAVE CITY, LOAD CITY, NEW CITY (and the 8 scenarios), SETTINGS (left hand, disasters), EXIT GAME |
 | Select | cycle speed (pause/slow/medium/fast) |
 | ZR | next overlay map |
 | ZL | swap the screens (any time; the stylus is off while swapped) |
 | 3D slider | stereoscopic depth strength |
 
 Saves go to `sdmc:/3ds/micropolis/autosave.cty` and are resumed at launch.
+NEW CITY, a scenario and LOAD CITY ask first, and the city in play is kept as
+`sdmc:/3ds/micropolis/kept/kept-NNNN.cty` (the 12 newest; LOAD CITY lists them as "Earlier").
+A scenario's goal and deadline are stored beside the city (`.scn`).
 Load city lists the autosave first, then every `.cty` in `sdmc:/3ds/micropolis/cities/`.
 
 ## Build
@@ -106,9 +109,8 @@ and cities stay in `sdmc:/3ds/micropolis/`) and launch from the Homebrew Launche
 
 ## In-game manual, city files, tooltips
 
-- **Start → How to play**: five pages (controls, starting a city, zones and
-  demand, services and budget, overlays/disasters/files) on the bottom screen.
-- **Start → Load city…** lists `.cty` files from `sdmc:/3ds/micropolis/cities/`.
+- **Start → MANUAL**: the built-in manual (text on the top screen, sections on the touch screen).
+- **Start → LOAD CITY** lists the last save, the kept earlier cities, and `.cty` files from `sdmc:/3ds/micropolis/cities/`.
   That is the "mod" surface Micropolis has: the format is the classic
   1989 city file, so classic cities and anything saved by Micropolis
   load as-is. There is no scripting or tileset

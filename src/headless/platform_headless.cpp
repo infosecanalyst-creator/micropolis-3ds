@@ -8,6 +8,7 @@
 #include <string.h>
 #include <stdarg.h>
 #include <time.h>
+#include <sys/stat.h>
 #include "../platform.h"
 #include "../app.h"
 
@@ -30,6 +31,7 @@ void sleepMs(unsigned) {}
 void noteSimTick() {}
 const char *resDir() { return g_res; }
 const char *saveDir() { return g_out; }
+void makeDir(const char *path) { mkdir(path, 0777); }
 void log(const char *fmt, ...) { va_list a; va_start(a, fmt); vfprintf(stderr, fmt, a); va_end(a); fputc('\n', stderr); }
 
 static void writePPM(const char *path, const Screen &s) {

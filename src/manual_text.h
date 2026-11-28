@@ -3,14 +3,14 @@
 static const char *const kManualText = R"MANUAL(# Welcome
 Micropolis is a classic city-building simulation, released as open source. You are the mayor: zone land, lay roads and power, set taxes, and keep the people happy while the city grows on its own.
 
-Press Start and choose How to play to open this manual. The city waits while you read.
+Press Start and choose MANUAL to open this manual. The city waits while you read.
 
 ## Using this manual
 - Circle Pad or C-Stick up/down: scroll the text (hold to keep scrolling).
 - D-Pad: move between the sections on the touch screen. L / R: previous / next section.
 - Tap a section on the touch screen to jump to it.
 - B, Start or Close: back to the game.
-- Left hand: tap Left hand: off / on at the bottom of the touch screen. The D-Pad and the Y, A, B, X buttons swap jobs (Y is up, A is right, B is down, X is left, and the reverse), so the stylus can be held in the left hand. It is remembered, and every button named in this manual follows the swap.
+- Left hand: tap Left hand: off / on at the bottom of the touch screen, or use Start > SETTINGS > LEFT HAND. The D-Pad and the Y, A, B, X buttons swap jobs (Y is up, A is right, B is down, X is left, and the reverse), so the stylus can be held in the left hand. It is remembered, and every button named in this manual follows the swap.
 
 ## The two screens
 The touch screen is a flat map you build on with the stylus. The top screen is a 3D close-up that follows your cursor, with the city's money, date, population, demand bars, a minimap and the latest message.
@@ -28,17 +28,17 @@ The touch screen is a flat map you build on with the stylus. The top screen is a
 | Speed | tap to cycle pause, slow, medium, fast |
 | Overlay | tap to cycle the map overlays |
 | ! | jump to the latest alert |
-| Menu | scenarios, load, save, disasters, this manual |
+| Menu | this manual, save, load, new city and scenarios, settings, exit |
 
 ## Tool strip
-Bulldozer, Road, Rail, Power, Residential, Commercial, Industrial, and a last slot holding your latest pick from the full grid of 16 tools. Tap that slot again to open the grid.
+Bulldozer, Road, Rail, Power, Residential, Commercial, Industrial, and More. One tap on More opens the grid of all 16 tools (power plants, police, fire, parks, stadium, seaport, airport, query): tap one, or move with the D-pad and press A. While a tool from the grid is in your hand the last slot shows it; tap it for the grid again.
 
 # Buttons
 | D-pad | move the cursor |
 | Circle Pad | scroll the map |
 | A | use the tool (hold A and use the D-pad to paint a line) |
-| B | bulldozer; B again returns to your last tool |
-| L / R | previous / next tool in the strip |
+| B | bulldozer; B again returns to your last tool (a line on the map says which tool you now hold) |
+| L / R | previous / next tool in the strip; one step past either end opens the grid of all 16 tools |
 | Y | zoom the map out / in |
 | X | budget |
 | Select | speed: pause, slow, medium, fast |
@@ -47,13 +47,13 @@ Bulldozer, Road, Rail, Power, Residential, Commercial, Industrial, and a last sl
 | ZL | swap the screens: the city fills the top screen and the touch screen becomes a touchpad (slide moves the pointer, tap taps there) |
 
 # Your first city
-Start with New city or Dullsville. The clock is paused: nothing happens until you press Select or tap the speed button.
+Start with a new city or Dullsville (Start > NEW CITY). The view opens on open land. The clock runs at medium speed from the start: press Select or tap the speed button (Pause, Slow, Med, Fast) to pause while you plan.
 
-1. Power. Build a Coal plant ($3000) a little away from where the town will be: it pollutes. Nuclear is cleaner but costs $5000.
+1. Power. Tap More in the tool strip and pick Coal Power ($3000). Build it a little away from where the town will be: it pollutes. Nuclear is cleaner but costs $5000.
 2. Roads. Draw a short grid of roads from the plant towards open flat land. Roads cost $10 a tile; water crossings become bridges.
 3. Zones. Place 3x3 Residential, Commercial and Industrial zones so each touches a road. Start with roughly 3 R : 1 C : 1 I.
 4. Connect power. Zones pass power to the zones they touch. Run Power Lines ($5) from the plant to the first zone. A lightning bolt on a zone means it has no power.
-5. Run the clock. Press Select. People move in within a few months. Messages appear on the top screen; tap ! to go there.
+5. Let the clock run. People move in within a few months. Messages appear on the top screen; tap ! to go there.
 6. Read the bars. The R C I bars show demand: above the line, build more of that zone; below it, you have too many.
 7. Add services as the city grows: police, fire stations and parks. Keep about $5000 in reserve.
 
@@ -124,7 +124,7 @@ ZR or the Overlay button. The overlay tints the map and the minimap.
 | Growth | where zones grew (green) or shrank (red) |
 
 # Disasters
-Menu > Disasters triggers one; some happen at random in long games.
+Start > SETTINGS > DISASTERS... starts one. Each asks first ("Start a tornado?", YES / NO, NO is chosen); some happen at random in long games.
 
 | Fire | spreads along buildings and trees; bulldoze a firebreak |
 | Flood | water spreads from the shore, then recedes |
@@ -154,13 +154,17 @@ Each starts a real city with a crisis and a goal, judged after a time limit.
 - Check the Power overlay after every build.
 
 # Files, saving and 3D
-- The Start menu has RESUME, MANUAL, SAVE CITY, LOAD CITY, NEW CITY..., DISASTERS... and EXIT GAME.
-- Menu > Save city writes sdmc:/3ds/micropolis/autosave.cty, which loads automatically next time. Every save is written to a temporary file first and the previous save is kept as autosave.cty.bak, so a failed save never costs you the old city. If a save fails the screen says "Save failed - is the SD card full?".
+- The Start menu has RESUME, MANUAL, SAVE CITY, LOAD CITY, NEW CITY, SETTINGS and EXIT GAME. B goes one step back, Start closes the menu.
+- SETTINGS has LEFT HAND: OFF / ON and DISASTERS...
+- SAVE CITY writes the game's save, which loads automatically next time. Every save is written to a temporary file first and the previous save is kept as autosave.cty.bak, so a failed save never costs you the old city. If a save fails the screen says "Save failed - is the SD card full?".
 - The city also autosaves every 5 minutes of play (time spent in menus, in the HOME Menu or asleep does not count) and says "City autosaved." when it did.
+- Your city is never thrown away. NEW CITY, a scenario and LOAD CITY all ask first ("Start a new city?", YES / NO, NO is chosen, B cancels). On YES the city in play is first kept as its own file, and only then replaced. If it cannot be kept the screen says "Save failed - your city was not replaced." and nothing changes. A city in which nothing was built yet is not kept; the question says so.
+- LOAD CITY lists "Last save" (the game's save), then every "Earlier" city the game kept, newest first, each with its date, population and money, then the city files in sdmc:/3ds/micropolis/cities/ (the classic 1989 .cty format, so classic city files work). The 12 newest kept cities stay on the card, in sdmc:/3ds/micropolis/kept/.
+- A scenario's goal and time limit are saved with the city, so a scenario goes on after you exit and come back.
 - EXIT GAME asks "Exit Micropolis?" and saves the city first. If that save fails it says so and asks EXIT ANYWAY or not; it never quits after a failed save without asking. Closing the game from the HOME menu (HOME, then Close) saves the city the same way (nobody can be asked then, so a failure is only logged).
-- If autosave.cty cannot be read at start (a card error, a half-written file), the game opens autosave.cty.bak and says "Autosave was unreadable: opened the previous save." If that fails too it starts a new city and says "Saved city unreadable: started a new city." The unreadable file is moved aside, not deleted.
+- If the save cannot be read at start (a card error, a half-written file), the game opens autosave.cty.bak and says "Autosave was unreadable: opened the previous save." If that fails too it starts a new city and says "Saved city unreadable: started a new city." The unreadable file is moved aside, not deleted.
 - Disasters and other important messages also show on the touch map while you build, not only on the top screen.
-- Menu > Load city lists the autosave first, then every .cty in sdmc:/3ds/micropolis/cities/ (the classic 1989 city format, so classic city files work).
+- "Can't build on water here." means just that; "Area must be bulldozed first." means something on the land is in the way.
 - The 3D slider sets the depth of the top screen: buildings rise with their density, vehicles are nearest, and the cursor sits on whatever it points at.
 - The program is sdmc:/3ds/micropolis.3dsx, directly in /3ds. Cities and settings live in sdmc:/3ds/micropolis/.
 - A manual.txt in sdmc:/3ds/micropolis/ replaces this manual's text.

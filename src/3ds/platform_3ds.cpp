@@ -258,6 +258,7 @@ void sleepMs(unsigned ms) { svcSleepThread((s64)ms * 1000000LL); }
 const char *resDir() { return kResDir; }
 const char *saveDir() { return kSaveDir; }
 
+void makeDir(const char *path) { mkdir(path, 0777); }
 void log(const char *fmt, ...) {
     char buf[256];
     va_list a; va_start(a, fmt); vsnprintf(buf, sizeof(buf), fmt, a); va_end(a);
