@@ -1521,7 +1521,7 @@ void App::drawMenu(Screen &s) {
     case PM_REPLACE:
         title = askKind == 2 ? "LOAD CITY" : "NEW CITY"; q = askLine1;
         if (askKind == 2 && citySel >= 0 && citySel < nCities) q2 = cityNames[citySel];
-        q3 = cityEdited ? "Your city is kept: LOAD CITY lists it." : "Nothing built in this city yet: it is not kept.";
+        q3 = cityEdited ? "Your city is kept: LOAD CITY lists it." : "You changed nothing in this city: it is not kept.";
         break;
     case PM_DISASTER_ASK: title = "DISASTERS"; q = kDisasterAsk[askArg % 6]; q2 = "It strikes your city at once."; break;
     case PM_CITIES: title = "NEW CITY"; break;
